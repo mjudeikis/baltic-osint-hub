@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds all runtime configuration, loaded from environment variables.
@@ -30,6 +31,9 @@ type Config struct {
 	EnrichModel string
 	// MaxEnrichPerRun caps LLM classification per collector run as a cost guard.
 	MaxEnrichPerRun int
+	// RunTimeout caps one collector run. It must exceed the time needed to
+	// walk the whole SAR watchlist, which is one API round-trip per site.
+	RunTimeout time.Duration
 }
 
 func Load() (*Config, error) {
@@ -50,6 +54,7 @@ func Load() (*Config, error) {
 		StaticDir:              os.Getenv("STATIC_DIR"),
 		EnrichModel:            getenv("ENRICH_MODEL", "gpt-5-mini"),
 		MaxEnrichPerRun:        getenvInt("MAX_ENRICH_PER_RUN", 300),
+		RunTimeout:             time.Duration(getenvInt("RUN_TIMEOUT_MINUTES", 50)) * time.Minute,
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

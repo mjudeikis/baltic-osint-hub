@@ -208,6 +208,7 @@ type sarAOI struct {
 	Country      string                 `json:"country"`
 	Kind         string                 `json:"kind"`
 	Side         string                 `json:"side"`
+	Class        string                 `json:"class"`
 	Note         string                 `json:"note"`
 	DepthKm      int                    `json:"depth_km"`
 	Bbox         [4]float64             `json:"bbox"` // lonMin, latMin, lonMax, latMax
@@ -240,6 +241,7 @@ func (s *Server) handleSAR(w http.ResponseWriter, r *http.Request) {
 			Country:      aoi.Country,
 			Kind:         aoi.Kind,
 			Side:         aoi.Side,
+			Class:        aoi.Class,
 			Note:         aoi.Note,
 			DepthKm:      aoi.DepthKm,
 			Bbox:         [4]float64{aoi.Box.LonMin, aoi.Box.LatMin, aoi.Box.LonMax, aoi.Box.LatMax},

@@ -87,3 +87,15 @@ Known gaps: **OSM carries essentially no military tagging for Kaliningrad**, so
 the Pravdinsky and Dobrovolsky ranges — both on the Zapad-2021 list, Dobrovolsk
 15 km from Lithuania — are unmapped and would need manual digitising. That is
 the largest remaining geolocation gap.
+
+## Boxes that cannot work
+
+A box covering a town saturates: dense built-up backscatter sits permanently
+high, so vehicle-scale change is lost in it. Smolensk was removed for exactly
+this reason — a 56% bright-pixel baseline against under 15% everywhere else.
+The 144th Motor Rifle Division is still watched through **Yelnya**, its
+staging area, which is bare ground and reads 3.9%.
+
+The check is cheap and worth repeating whenever sites are added: any baseline
+much above ~15% means the box is measuring a settlement rather than an
+installation.

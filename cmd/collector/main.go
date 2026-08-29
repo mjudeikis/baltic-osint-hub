@@ -24,7 +24,9 @@ func main() {
 		log.Error("config", "err", err)
 		os.Exit(1)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	// One run must be able to cover the whole watchlist. Each SAR site is a
+	// separate Copernicus round-trip, so this budget scales with the site count.
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.RunTimeout)
 	defer cancel()
 
 	db, err := store.New(ctx, cfg.DatabaseURL)

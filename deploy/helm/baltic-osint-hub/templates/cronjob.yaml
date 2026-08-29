@@ -11,7 +11,9 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      activeDeadlineSeconds: 1500
+      # Must exceed RUN_TIMEOUT_MINUTES: one run walks the whole SAR watchlist,
+      # which is a separate Copernicus round-trip per site.
+      activeDeadlineSeconds: 3900
       template:
         metadata:
           labels:

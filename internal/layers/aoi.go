@@ -292,12 +292,6 @@ var MonitoredAOIs = []AOI{
 		Box: Box{Name: "polatsk", LatMin: 55.44, LonMin: 28.66, LatMax: 55.56, LonMax: 28.90},
 	},
 	{
-		Key: "smolensk", Label: "Smolensk — 144th Motor Rifle Div.", Country: "RU", Kind: "garrison",
-		Note:  "Division-level formation of the Western Military District; the parent of the Yelnya staging area.",
-		Class: ClassOccupied, Side: SideAdversary, DepthKm: 400,
-		Box: Box{Name: "smolensk", LatMin: 54.72, LonMin: 31.94, LatMax: 54.84, LonMax: 32.18},
-	},
-	{
 		Key: "machulishchy", Label: "Machulishchy air base", Country: "BY", Kind: "airbase",
 		Note:  "Air base south of Minsk used for Russian A-50 airborne-early-warning aircraft.",
 		Class: ClassOccupied, Side: SideAdversary, DepthKm: 190,

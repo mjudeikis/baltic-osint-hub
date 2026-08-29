@@ -166,8 +166,12 @@ func (s *Sentinel) Run(ctx context.Context, db *store.Store, log *slog.Logger) e
 		log.Info("sar aoi updated", "aoi", aoi.Key, "intervals", len(obs),
 			"series", len(series), "anomaly", a.Detected)
 	}
-	if len(failures) == len(MonitoredAOIs) {
-		return fmt.Errorf("all AOIs failed (e.g. %s)", strings.Join(failures, ", "))
+	if len(failures) > 0 {
+		// Any failure keeps the layer's gate open so the next run continues
+		// where this one stopped. Sites already stored are re-requested with
+		// only a short trailing window, so successive runs get further.
+		return fmt.Errorf("%d of %d AOIs incomplete: %s",
+			len(failures), len(MonitoredAOIs), strings.Join(failures, ", "))
 	}
 	return nil
 }
