@@ -15,6 +15,9 @@ var regionTerms = []string{
 	"baltic", "balti", "kaliningrad", "suwalki", "suwałki",
 	"belarus", "russia", "rusij", "krievij", "venemaa", "rosja", "росси",
 	"nato",
+	// Cyrillic (Telegram channels post in Russian)
+	"литв", "латв", "эстон", "польш", "прибалт", "калининград",
+	"белорус", "беларус", "сувал", "нато",
 }
 
 var threatTerms = []string{
@@ -37,6 +40,19 @@ var threatTerms = []string{
 	"army", "kariuomen", "zapad",
 	// energy
 	"energy", "electricity", "grid", "lng",
+	// equipment movements (thin captions on spotting videos must survive
+	// to the LLM)
+	"convoy", "column of", "echelon", "armor", "armour", "tanks", "brigade",
+	"battalion", "redeploy", "reinforcement",
+	// Cyrillic
+	"диверс", "саботаж", "кибератак", "шпион", "разведк", "дрон", "бпла",
+	"ракет", "учени", "граница", "провокаци", "гибридн", "вторжен",
+	"колонн", "эшелон", "переброс", "военная техник", "войск", "танк",
+	// Belarusian
+	"калона", "вайск", "тэхнік",
+	// Polish / Lithuanian
+	"szpieg", "granic", "wojsk", "zagro", "czołg", "kolumna", "przerzut",
+	"šnip", "kibernet", "pasien", "grėsm", "kolona", "kariuomen",
 }
 
 // AlwaysRelevantSources skip the region/threat check — everything they
@@ -47,12 +63,26 @@ var alwaysRelevantSources = map[string]bool{
 	"icds":        true,
 }
 
+// regionImpliedSources cover a monitored country by definition, so their
+// posts only need a threat term — spotting captions name towns ("колонна в
+// Гродно"), not countries.
+var regionImpliedSources = map[string]bool{
+	"tg:MotolkoHelp": true, // Belarus monitoring
+	"tg:belzhd_live": true, // Belarusian railways
+	"tg:nexta_live":  true, // Belarus
+}
+
 func PassesPrefilter(source, title, body string) bool {
 	if alwaysRelevantSources[source] {
 		return true
 	}
 	text := strings.ToLower(title + " " + body)
-	return containsAny(text, regionTerms) && containsAny(text, threatTerms)
+	// A region-scoped source (reddit:r/lithuania, tg channel about Belarus)
+	// implies the region; posts there rarely restate the country name.
+	regionOK := regionImpliedSources[source] ||
+		containsAny(text, regionTerms) ||
+		containsAny(strings.ToLower(source), regionTerms)
+	return regionOK && containsAny(text, threatTerms)
 }
 
 func containsAny(text string, terms []string) bool {

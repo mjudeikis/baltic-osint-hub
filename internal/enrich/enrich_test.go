@@ -14,6 +14,17 @@ func TestPassesPrefilter(t *testing.T) {
 		{"euvsdisinfo", "Weekly disinfo review", true}, // always-relevant source
 		{"notes-from-poland", "Drone incursion closes Warsaw airport", true},
 		{"gdelt:example.com", "Undersea cable damaged in Baltic Sea", true},
+		// Region implied by the source, threat term in text.
+		{"reddit:r/lithuania", "Another drone spotted near the airport", true},
+		{"reddit:r/lithuania", "Best kepta duona in Vilnius old town?", false},
+		// Russian-language Telegram posts.
+		{"tg:meduzalive", "В Литве заявили о новой диверсии на железной дороге", true},
+		{"tg:meduzalive", "Новый альбом группы вышел сегодня", false},
+		// Movement captions from Belarus-scoped channels: no country named,
+		// town only — region is implied by the source.
+		{"tg:belzhd_live", "Эшелон с военной техникой прошёл через Оршу", true},
+		{"tg:MotolkoHelp", "Колонна танков замечена под Гродно", true},
+		{"tg:MotolkoHelp", "Курс доллара снова вырос", false},
 	}
 	for _, c := range cases {
 		if got := PassesPrefilter(c.source, c.title, ""); got != c.want {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/mjudeikis/baltic-osint-hub/internal/api"
 	"github.com/mjudeikis/baltic-osint-hub/internal/config"
+	"github.com/mjudeikis/baltic-osint-hub/internal/layers"
 	"github.com/mjudeikis/baltic-osint-hub/internal/store"
 )
 
@@ -33,6 +34,14 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	// AIS watch is a persistent stream, so it lives in the server process
+	// rather than the collector cron.
+	if cfg.AISStreamAPIKey != "" {
+		go (&layers.AISWatch{APIKey: cfg.AISStreamAPIKey, DB: db, Log: log}).Run(ctx)
+	} else {
+		log.Warn("AISSTREAM_API_KEY not set; sea-activity watch disabled")
+	}
 
 	mux := http.NewServeMux()
 	api.New(db, log).Register(mux)

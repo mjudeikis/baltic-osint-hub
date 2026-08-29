@@ -24,22 +24,19 @@ spec:
               image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               command: ["/usr/local/bin/collector"]
+              # All keys come from the secret via envFrom (create it with
+              # --from-env-file=.env). Explicit env entries take precedence,
+              # deliberately overriding the local-dev DATABASE_URL a copied
+              # .env may carry, and pinning model/cost settings to values.
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.existingSecret }}
+                    optional: true
               env:
                 {{- include "osint.dbEnv" . | nindent 16 }}
                 - name: ENRICH_MODEL
                   value: {{ .Values.collector.enrichModel | quote }}
                 - name: MAX_ENRICH_PER_RUN
                   value: {{ .Values.collector.maxEnrichPerRun | quote }}
-                - name: ANTHROPIC_API_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Values.existingSecret }}
-                      key: ANTHROPIC_API_KEY
-                - name: ACLED_API_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Values.existingSecret }}
-                      key: ACLED_API_KEY
-                      optional: true
               resources:
                 {{- toYaml .Values.collector.resources | nindent 16 }}

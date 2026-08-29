@@ -15,7 +15,7 @@ server:
 collector:
   # Every 30 minutes; per-source intervals are enforced internally.
   schedule: "*/30 * * * *"
-  enrichModel: claude-haiku-4-5
+  enrichModel: gpt-5-mini
   maxEnrichPerRun: "300"
   resources:
     requests:
@@ -24,8 +24,15 @@ collector:
     limits:
       memory: 256Mi
 
-# Secret with keys: ANTHROPIC_API_KEY (required for classification),
-# ACLED_API_KEY (optional), and DATABASE_URL when postgres.enabled=false.
+# Secret injected wholesale into both workloads via envFrom. Create it from
+# your local .env:
+#   kubectl -n osint create secret generic baltic-osint-hub --from-env-file=.env
+# Keys: OPENAI_API_KEY (required for classification); optional: FIRMS_MAP_KEY,
+# OPENSKY_CLIENT_ID/OPENSKY_CLIENT_SECRET, AISSTREAM_API_KEY,
+# ACLED_EMAIL/ACLED_PASSWORD, and DATABASE_URL when postgres.enabled=false.
+# A local-dev DATABASE_URL/STATIC_DIR in the secret is harmless — the chart
+# overrides both (unless postgres.enabled=false, where the secret's
+# DATABASE_URL is authoritative).
 existingSecret: baltic-osint-hub
 
 # Self-contained Postgres. Disable and set DATABASE_URL in the secret to use

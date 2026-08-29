@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/mmcdole/gofeed"
@@ -19,16 +20,36 @@ type RSSFetcher struct {
 	// maxAge drops items older than this on ingest (protects against
 	// backfilling years of archive on first run).
 	maxAge time.Duration
+	// throttleGroup serializes fetchers sharing the same group with a gap
+	// between requests — for hosts that rate-limit per IP (reddit.com).
+	throttleGroup string
 }
 
 func NewRSS(name, url, lang string, interval time.Duration) *RSSFetcher {
 	return &RSSFetcher{name: name, url: url, lang: lang, interval: interval, maxAge: 14 * 24 * time.Hour}
 }
 
+// Throttled marks the feed as part of a serialization group.
+func (f *RSSFetcher) Throttled(group string) *RSSFetcher {
+	f.throttleGroup = group
+	return f
+}
+
 func (f *RSSFetcher) Name() string            { return f.name }
 func (f *RSSFetcher) Interval() time.Duration { return f.interval }
 
+var throttleGroups sync.Map // group name -> *sync.Mutex
+
 func (f *RSSFetcher) Fetch(ctx context.Context) ([]store.RawItem, error) {
+	if f.throttleGroup != "" {
+		mu, _ := throttleGroups.LoadOrStore(f.throttleGroup, &sync.Mutex{})
+		m := mu.(*sync.Mutex)
+		m.Lock()
+		defer func() {
+			time.Sleep(10 * time.Second) // gap before the group's next request
+			m.Unlock()
+		}()
+	}
 	parser := gofeed.NewParser()
 	parser.Client = HTTPClient
 	feed, err := parser.ParseURLWithContext(f.url, ctx)

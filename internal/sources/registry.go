@@ -29,5 +29,36 @@ func All() []Fetcher {
 		NewRSS("icds", "https://icds.ee/en/feed/", "en", slow),
 		NewRSS("warsaw-institute", "https://warsawinstitute.org/feed/", "en", slow),
 		NewRSS("lt-mod", "https://kam.lt/en/feed/", "en", slow),
+		NewRSS("ee-mil", "https://mil.ee/en/feed/", "en", slow),
+		NewRSS("lv-mod", "https://www.mod.gov.lv/lv/rss.xml", "lv", slow),
+
+		// Telegram — public channels commonly monitored for Russia/Belarus
+		// OSINT, read via the t.me/s web preview. mod_russia and rybar are
+		// monitored as primary sources of Russian military/propaganda
+		// messaging, not as trusted reporting; classification handles framing.
+		NewTelegram("meduzalive", "ru"),
+		NewTelegram("astrapress", "ru"),
+		NewTelegram("nexta_live", "ru"),
+		NewTelegram("rybar", "ru"),
+		NewTelegram("mod_russia", "ru"),
+		// Military-movement tracking: Belarus monitoring (MotolkoHelp), the
+		// Belarusian railway workers' community that reports military rail
+		// echelons (belzhd_live), and a Rybar-adjacent RU military channel.
+		NewTelegram("MotolkoHelp", "ru"),
+		NewTelegram("belzhd_live", "ru"),
+		NewTelegram("milinfolive", "ru"),
+
+		// Reddit — regional subreddits via their public RSS listings,
+		// serialized with a gap so the shared IP isn't rate-limited.
+		NewRSS("reddit:r/BalticStates", "https://www.reddit.com/r/BalticStates/new/.rss", "en", time.Hour).Throttled("reddit"),
+		NewRSS("reddit:r/lithuania", "https://www.reddit.com/r/lithuania/new/.rss", "en", time.Hour).Throttled("reddit"),
+		NewRSS("reddit:r/latvia", "https://www.reddit.com/r/latvia/new/.rss", "en", time.Hour).Throttled("reddit"),
+		NewRSS("reddit:r/Eesti", "https://www.reddit.com/r/Eesti/new/.rss", "en", time.Hour).Throttled("reddit"),
+		NewRSS("reddit:r/poland", "https://www.reddit.com/r/poland/new/.rss", "en", time.Hour).Throttled("reddit"),
+
+		// Bluesky keyword monitors (open search API).
+		NewBluesky("baltic-jamming", `baltic jamming`),
+		NewBluesky("baltic-sabotage", `baltic sabotage`),
+		NewBluesky("baltic-airspace", `baltic airspace violation`),
 	}
 }

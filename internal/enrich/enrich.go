@@ -1,5 +1,5 @@
 // Package enrich classifies raw feed items into threat incidents using the
-// Claude API. Items are sent in batches; the model returns one JSON verdict
+// OpenAI API. Items are sent in batches; the model returns one JSON verdict
 // per item.
 package enrich
 
@@ -8,9 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"github.com/mjudeikis/baltic-osint-hub/internal/store"
 )
@@ -36,13 +33,15 @@ type Verdict struct {
 }
 
 type Classifier struct {
-	client anthropic.Client
+	client *openAIClient
 	model  string
 }
 
-func NewClassifier(apiKey, model string) *Classifier {
+// NewClassifier builds an OpenAI-backed classifier. baseURL is normally empty
+// (api.openai.com) and exists for tests and compatible gateways.
+func NewClassifier(apiKey, model, baseURL string) *Classifier {
 	return &Classifier{
-		client: anthropic.NewClient(option.WithAPIKey(apiKey)),
+		client: newOpenAIClient(apiKey, baseURL),
 		model:  model,
 	}
 }
@@ -82,26 +81,9 @@ func (c *Classifier) ClassifyBatch(ctx context.Context, items []store.RawItem) (
 		sb.WriteString("\n")
 	}
 
-	resp, err := c.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     anthropic.Model(c.model),
-		MaxTokens: 8000,
-		System: []anthropic.TextBlockParam{{
-			Text:         systemPrompt,
-			CacheControl: anthropic.NewCacheControlEphemeralParam(),
-		}},
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(sb.String())),
-		},
-	})
+	text, err := c.client.complete(ctx, c.model, systemPrompt, sb.String(), 16000)
 	if err != nil {
-		return nil, fmt.Errorf("claude: %w", err)
-	}
-
-	var text string
-	for _, block := range resp.Content {
-		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
-			text += tb.Text
-		}
+		return nil, err
 	}
 	verdicts, err := parseVerdicts(text)
 	if err != nil {

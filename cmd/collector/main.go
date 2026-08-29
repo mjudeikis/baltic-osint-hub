@@ -5,12 +5,14 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/mjudeikis/baltic-osint-hub/internal/config"
 	"github.com/mjudeikis/baltic-osint-hub/internal/enrich"
+	"github.com/mjudeikis/baltic-osint-hub/internal/layers"
 	"github.com/mjudeikis/baltic-osint-hub/internal/sources"
 	"github.com/mjudeikis/baltic-osint-hub/internal/store"
 )
@@ -33,12 +35,13 @@ func main() {
 	defer db.Close()
 
 	fetchAll(ctx, log, db)
+	runLayers(ctx, log, db, cfg)
 
-	if cfg.AnthropicAPIKey == "" {
-		log.Warn("ANTHROPIC_API_KEY not set; skipping classification")
+	if cfg.OpenAIAPIKey == "" {
+		log.Warn("OPENAI_API_KEY not set; skipping classification")
 		return
 	}
-	classify(ctx, log, db, enrich.NewClassifier(cfg.AnthropicAPIKey, cfg.EnrichModel), cfg.MaxEnrichPerRun)
+	classify(ctx, log, db, enrich.NewClassifier(cfg.OpenAIAPIKey, cfg.EnrichModel, cfg.OpenAIBaseURL), cfg.MaxEnrichPerRun)
 }
 
 func fetchAll(ctx context.Context, log *slog.Logger, db *store.Store) {
@@ -73,6 +76,37 @@ func fetchAll(ctx context.Context, log *slog.Logger, db *store.Store) {
 		}(f)
 	}
 	wg.Wait()
+}
+
+// runLayers ingests the machine-signal layers (thermal anomalies, GPS
+// jamming, air activity). Errors are logged and recorded, never fatal.
+func runLayers(ctx context.Context, log *slog.Logger, db *store.Store, cfg *config.Config) {
+	client := &http.Client{Timeout: 2 * time.Minute}
+	run := func(name string, fn func() error) {
+		started := time.Now()
+		err := fn()
+		db.RecordSourceRun(ctx, name, started, 0, 0, err)
+		if err != nil {
+			log.Error("layer", "name", name, "err", err)
+		}
+	}
+	run("layer:gpsjam", func() error {
+		return (&layers.Gpsjam{Client: client}).Run(ctx, db, log)
+	})
+	run("layer:opensky", func() error {
+		return (&layers.OpenSky{
+			ClientID:     cfg.OpenSkyClientID,
+			ClientSecret: cfg.OpenSkyClientSecret,
+			Client:       client,
+		}).Run(ctx, db, log)
+	})
+	if cfg.FIRMSMapKey != "" {
+		run("layer:firms", func() error {
+			return (&layers.FIRMS{MapKey: cfg.FIRMSMapKey, Client: client}).Run(ctx, db, log)
+		})
+	} else {
+		log.Warn("FIRMS_MAP_KEY not set; skipping thermal layer")
+	}
 }
 
 const batchSize = 20

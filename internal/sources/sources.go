@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mjudeikis/baltic-osint-hub/internal/store"
 )
@@ -41,10 +42,15 @@ func ContentHash(title string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Truncate limits body text; classification needs the lede, not the article.
+// Truncate limits text to max bytes without splitting a UTF-8 rune;
+// classification needs the lede, not the article.
 func Truncate(s string, max int) string {
 	if len(s) <= max {
 		return s
 	}
-	return s[:max]
+	cut := s[:max]
+	for len(cut) > 0 && !utf8.ValidString(cut) {
+		cut = cut[:len(cut)-1]
+	}
+	return cut
 }

@@ -22,8 +22,18 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: 8080
+          # The whole secret is injected via envFrom (create it with
+          # --from-env-file=.env). Explicit env entries below take precedence,
+          # deliberately overriding the local-dev DATABASE_URL/STATIC_DIR a
+          # copied .env may carry.
+          envFrom:
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+                optional: true
           env:
             {{- include "osint.dbEnv" . | nindent 12 }}
+            - name: STATIC_DIR
+              value: /srv/web
           readinessProbe:
             httpGet:
               path: /healthz

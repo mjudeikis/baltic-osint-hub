@@ -65,3 +65,64 @@ export const fetchTimeline = (days: number, country?: string) =>
 
 export const fetchSummary = () => get<SummaryCell[]>("/api/stats/summary");
 export const fetchSources = () => get<SourceStatus[]>("/api/sources");
+
+// --- signal layers ---
+
+export interface FIRMSDetection {
+  lat: number;
+  lon: number;
+  brightness: number;
+  frp: number;
+  confidence: string;
+  sector: string;
+  detected_at: string;
+}
+
+export interface GpsjamCell {
+  day: string;
+  hex: string;
+  good: number;
+  bad: number;
+}
+
+export interface AirSighting {
+  seen_at: string;
+  icao24: string;
+  callsign: string;
+  country: string;
+  box: string;
+  lat?: number;
+  lon?: number;
+  altitude?: number;
+  velocity?: number;
+  reason: string;
+}
+
+export interface SeaEvent {
+  detected_at: string;
+  mmsi: number;
+  ship_name: string;
+  corridor: string;
+  lat?: number;
+  lon?: number;
+  sog?: number;
+  event: string;
+  started_at?: string;
+}
+
+export interface Layers {
+  firms: FIRMSDetection[];
+  gpsjam: GpsjamCell[];
+  air: AirSighting[];
+  sea: SeaEvent[];
+}
+
+export async function fetchLayers(): Promise<Layers> {
+  const [firms, gpsjam, air, sea] = await Promise.all([
+    get<FIRMSDetection[]>("/api/layers/firms?days=7"),
+    get<GpsjamCell[]>("/api/layers/gpsjam"),
+    get<AirSighting[]>("/api/layers/air?days=2"),
+    get<SeaEvent[]>("/api/layers/sea?days=7"),
+  ]);
+  return { firms, gpsjam, air, sea };
+}

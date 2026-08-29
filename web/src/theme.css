@@ -259,6 +259,40 @@ header.site p {
   border: 1px solid var(--border);
 }
 
+/* MapLibre popups ship a hardcoded white background; retheme with our
+   tokens so dark mode isn't white-on-white. */
+.maplibregl-popup-content {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font: 12.5px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.maplibregl-popup-content a {
+  color: var(--series-1);
+}
+.maplibregl-popup-close-button {
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--surface-1);
+}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--surface-1);
+}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--surface-1);
+}
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--surface-1);
+}
+
 footer.site {
   margin-top: 24px;
   color: var(--text-muted);

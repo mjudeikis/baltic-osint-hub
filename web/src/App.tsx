@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import {
   fetchIncidents,
+  fetchLayers,
   fetchSources,
   fetchSummary,
   fetchTimeline,
   Incident,
+  Layers,
   SourceStatus,
   SummaryCell,
   TimelineBucket,
@@ -25,11 +27,13 @@ export default function App() {
   const [timeline, setTimeline] = useState<TimelineBucket[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [sources, setSources] = useState<SourceStatus[]>([]);
+  const [layers, setLayers] = useState<Layers | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     fetchSummary().then(setSummary).catch((e) => setError(String(e)));
     fetchSources().then(setSources).catch(() => {});
+    fetchLayers().then(setLayers).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -95,8 +99,8 @@ export default function App() {
       </section>
 
       <section className="card" aria-label="Map">
-        <h2>Located incidents</h2>
-        <IncidentMap incidents={incidents} />
+        <h2>Situation map</h2>
+        <IncidentMap incidents={incidents} layers={layers} />
       </section>
 
       <section className="card" aria-label="Incident feed">
@@ -113,8 +117,12 @@ export default function App() {
           <p>
             Items are collected every 30 minutes from public RSS feeds (LRT, ERR, LSM,
             Notes from Poland, EUvsDisinfo, CERT.PL, CEPA, Jamestown, ICDS, Warsaw
-            Institute, Lithuanian MoD) and the GDELT news index, then automatically
-            classified and summarized by a language model. Classification is automated
+            Institute, Lithuanian/Latvian MoD, Estonian Defence Forces), the GDELT
+            news index, public Telegram channels
+            (including Russian state and pro-war channels, monitored as primary sources
+            of adversary messaging — not as trusted reporting), regional subreddits,
+            and Bluesky keyword searches, then automatically classified and summarized
+            by a language model. Classification is automated
             and may contain errors — always verify against the linked original source.
             This dashboard aggregates <em>publicly reported</em> events; it is not an
             official assessment.

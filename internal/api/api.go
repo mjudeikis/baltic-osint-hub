@@ -28,6 +28,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stats/summary", s.handleSummary)
 	mux.HandleFunc("GET /api/sources", s.handleSources)
 	mux.HandleFunc("GET /api/meta", s.handleMeta)
+	mux.HandleFunc("GET /api/layers/firms", s.handleFIRMS)
+	mux.HandleFunc("GET /api/layers/gpsjam", s.handleGpsjam)
+	mux.HandleFunc("GET /api/layers/air", s.handleAir)
+	mux.HandleFunc("GET /api/layers/sea", s.handleSea)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -108,6 +112,51 @@ func (s *Server) handleMeta(w http.ResponseWriter, _ *http.Request) {
 		"categories": enrich.Categories,
 		"countries":  enrich.Countries,
 	})
+}
+
+// sinceDays reads ?days= with bounds and a default.
+func sinceDays(r *http.Request, def, max int) time.Time {
+	days := def
+	if v, err := strconv.Atoi(r.URL.Query().Get("days")); err == nil && v > 0 && v <= max {
+		days = v
+	}
+	return time.Now().AddDate(0, 0, -days)
+}
+
+func (s *Server) handleFIRMS(w http.ResponseWriter, r *http.Request) {
+	out, err := s.db.FIRMSSince(r.Context(), sinceDays(r, 7, 30))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.writeJSON(w, out)
+}
+
+func (s *Server) handleGpsjam(w http.ResponseWriter, r *http.Request) {
+	out, err := s.db.GpsjamLatest(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.writeJSON(w, out)
+}
+
+func (s *Server) handleAir(w http.ResponseWriter, r *http.Request) {
+	out, err := s.db.AirSince(r.Context(), sinceDays(r, 2, 30))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.writeJSON(w, out)
+}
+
+func (s *Server) handleSea(w http.ResponseWriter, r *http.Request) {
+	out, err := s.db.SeaSince(r.Context(), sinceDays(r, 7, 30))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.writeJSON(w, out)
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {

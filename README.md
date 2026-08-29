@@ -83,10 +83,14 @@ For frontend iteration run `npm run dev` in `web/` (proxies /api to :8080).
 
 ```sh
 kubectl create ns osint
-kubectl -n osint create secret generic baltic-osint-hub \
-  --from-literal=OPENAI_API_KEY=sk-...
+kubectl -n osint create secret generic baltic-osint-hub --from-env-file=.env
 helm install osint deploy/helm/baltic-osint-hub -n osint
 ```
+
+The secret is injected wholesale (`envFrom`), so adding a key to `.env` and
+re-creating the secret is all it takes for new credentials. The chart
+overrides `DATABASE_URL` and `STATIC_DIR` from a copied local `.env` (unless
+`postgres.enabled=false`, where the secret's `DATABASE_URL` is used).
 
 The chart ships a single-node Postgres (`postgres.enabled=true`, 5Gi PVC);
 point your Cloudflare tunnel at `http://osint-baltic-osint-hub.osint.svc:8080`.
