@@ -110,19 +110,44 @@ export interface SeaEvent {
   started_at?: string;
 }
 
+export interface SarObservation {
+  start: string;
+  end: string;
+  bright_fraction: number;
+  mean_db: number;
+  sample_count: number;
+}
+
+export interface SarAOI {
+  key: string;
+  label: string;
+  country: string;
+  kind: string;
+  bbox: [number, number, number, number]; // lonMin, latMin, lonMax, latMax
+  browser_url: string;
+  series: SarObservation[];
+  anomaly: boolean;
+  zscore: number;
+  latest: number;
+  median: number;
+  baseline: number;
+}
+
 export interface Layers {
   firms: FIRMSDetection[];
   gpsjam: GpsjamCell[];
   air: AirSighting[];
   sea: SeaEvent[];
+  sar: SarAOI[];
 }
 
 export async function fetchLayers(): Promise<Layers> {
-  const [firms, gpsjam, air, sea] = await Promise.all([
+  const [firms, gpsjam, air, sea, sar] = await Promise.all([
     get<FIRMSDetection[]>("/api/layers/firms?days=7"),
     get<GpsjamCell[]>("/api/layers/gpsjam"),
     get<AirSighting[]>("/api/layers/air?days=2"),
     get<SeaEvent[]>("/api/layers/sea?days=7"),
+    get<SarAOI[]>("/api/layers/sar"),
   ]);
-  return { firms, gpsjam, air, sea };
+  return { firms, gpsjam, air, sea, sar };
 }

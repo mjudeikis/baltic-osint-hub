@@ -29,7 +29,8 @@ collector:
 #   kubectl -n osint create secret generic baltic-osint-hub --from-env-file=.env
 # Keys: OPENAI_API_KEY (required for classification); optional: FIRMS_MAP_KEY,
 # OPENSKY_CLIENT_ID/OPENSKY_CLIENT_SECRET, AISSTREAM_API_KEY,
-# ACLED_EMAIL/ACLED_PASSWORD, and DATABASE_URL when postgres.enabled=false.
+# COPERNICUS_CLIENT_ID/COPERNICUS_CLIENT_SECRET, ACLED_EMAIL/ACLED_PASSWORD,
+# and DATABASE_URL when postgres.enabled=false.
 # A local-dev DATABASE_URL/STATIC_DIR in the secret is harmless — the chart
 # overrides both (unless postgres.enabled=false, where the secret's
 # DATABASE_URL is authoritative).
@@ -47,6 +48,18 @@ postgres:
   database: osint
 
 service:
-  # ClusterIP; point the Cloudflare tunnel at
+  # ClusterIP; the Gateway API route below (or your own tunnel config) points at
   # http://<release>-baltic-osint-hub.<namespace>.svc:8080
   port: 8080
+
+# Public exposure via a Gateway API HTTPRoute. On the home cluster this attaches
+# to the cfgate Cloudflare Tunnel gateway, which creates the proxied CNAME to
+# <tunnel-id>.cfargotunnel.com automatically — the hostname's zone must be
+# listed in the cfgate CloudflareDNS resource.
+route:
+  enabled: false
+  hostnames:
+    - just-bob-club.xyz
+  gateway:
+    name: cloudflare-tunnel
+    namespace: cfgate-system

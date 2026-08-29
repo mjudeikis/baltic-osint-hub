@@ -40,6 +40,9 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          # Layer cache across runs; without it every push re-runs npm ci.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ github.sha }}

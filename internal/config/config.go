@@ -21,8 +21,11 @@ type Config struct {
 	OpenSkyClientID     string // OpenSky OAuth2; anonymous fallback when empty
 	OpenSkyClientSecret string
 	AISStreamAPIKey     string // aisstream.io (free registration)
-	ListenAddr          string
-	StaticDir           string // directory with built frontend; empty disables static serving
+	// Copernicus Data Space OAuth client for Sentinel-1 SAR change detection.
+	CopernicusClientID     string
+	CopernicusClientSecret string
+	ListenAddr             string
+	StaticDir              string // directory with built frontend; empty disables static serving
 	// EnrichModel is the OpenAI model used for classification.
 	EnrichModel string
 	// MaxEnrichPerRun caps LLM classification per collector run as a cost guard.
@@ -32,19 +35,21 @@ type Config struct {
 func Load() (*Config, error) {
 	loadDotEnv(".env")
 	c := &Config{
-		DatabaseURL:         os.Getenv("DATABASE_URL"),
-		OpenAIAPIKey:        os.Getenv("OPENAI_API_KEY"),
-		OpenAIBaseURL:       os.Getenv("OPENAI_BASE_URL"),
-		ACLEDEmail:          os.Getenv("ACLED_EMAIL"),
-		ACLEDPassword:       os.Getenv("ACLED_PASSWORD"),
-		FIRMSMapKey:         os.Getenv("FIRMS_MAP_KEY"),
-		OpenSkyClientID:     os.Getenv("OPENSKY_CLIENT_ID"),
-		OpenSkyClientSecret: os.Getenv("OPENSKY_CLIENT_SECRET"),
-		AISStreamAPIKey:     os.Getenv("AISSTREAM_API_KEY"),
-		ListenAddr:          getenv("LISTEN_ADDR", ":8080"),
-		StaticDir:           os.Getenv("STATIC_DIR"),
-		EnrichModel:         getenv("ENRICH_MODEL", "gpt-5-mini"),
-		MaxEnrichPerRun:     getenvInt("MAX_ENRICH_PER_RUN", 300),
+		DatabaseURL:            os.Getenv("DATABASE_URL"),
+		OpenAIAPIKey:           os.Getenv("OPENAI_API_KEY"),
+		OpenAIBaseURL:          os.Getenv("OPENAI_BASE_URL"),
+		ACLEDEmail:             os.Getenv("ACLED_EMAIL"),
+		ACLEDPassword:          os.Getenv("ACLED_PASSWORD"),
+		FIRMSMapKey:            os.Getenv("FIRMS_MAP_KEY"),
+		OpenSkyClientID:        os.Getenv("OPENSKY_CLIENT_ID"),
+		OpenSkyClientSecret:    os.Getenv("OPENSKY_CLIENT_SECRET"),
+		AISStreamAPIKey:        os.Getenv("AISSTREAM_API_KEY"),
+		CopernicusClientID:     os.Getenv("COPERNICUS_CLIENT_ID"),
+		CopernicusClientSecret: os.Getenv("COPERNICUS_CLIENT_SECRET"),
+		ListenAddr:             getenv("LISTEN_ADDR", ":8080"),
+		StaticDir:              os.Getenv("STATIC_DIR"),
+		EnrichModel:            getenv("ENRICH_MODEL", "gpt-5-mini"),
+		MaxEnrichPerRun:        getenvInt("MAX_ENRICH_PER_RUN", 300),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

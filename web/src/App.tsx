@@ -16,6 +16,7 @@ import ThreatBoard from "./components/ThreatBoard";
 import Timeline from "./components/Timeline";
 import IncidentMap from "./components/IncidentMap";
 import Feed from "./components/Feed";
+import SarPanel from "./components/SarPanel";
 
 const DAY_PRESETS = [7, 30, 90] as const;
 
@@ -103,6 +104,11 @@ export default function App() {
         <IncidentMap incidents={incidents} layers={layers} />
       </section>
 
+      <section className="card" aria-label="Satellite change detection">
+        <h2>Satellite change detection — monitored sites</h2>
+        <SarPanel aois={layers?.sar ?? []} />
+      </section>
+
       <section className="card" aria-label="Incident feed">
         <h2>
           Incident feed
@@ -122,7 +128,10 @@ export default function App() {
             (including Russian state and pro-war channels, monitored as primary sources
             of adversary messaging — not as trusted reporting), regional subreddits,
             and Bluesky keyword searches, then automatically classified and summarized
-            by a language model. Classification is automated
+            by a language model. Map layers add machine measurements: GPS-jamming
+            cells, NASA FIRMS thermal anomalies, aircraft and vessel activity, and
+            Sentinel-1 radar change detection over monitored sites — these are
+            detections, not verified events. Classification is automated
             and may contain errors — always verify against the linked original source.
             This dashboard aggregates <em>publicly reported</em> events; it is not an
             official assessment.

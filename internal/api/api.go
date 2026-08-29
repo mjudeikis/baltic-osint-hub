@@ -4,11 +4,13 @@ package api
 import (
 	"encoding/json"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/mjudeikis/baltic-osint-hub/internal/enrich"
+	"github.com/mjudeikis/baltic-osint-hub/internal/layers"
 	"github.com/mjudeikis/baltic-osint-hub/internal/store"
 )
 
@@ -32,6 +34,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/layers/gpsjam", s.handleGpsjam)
 	mux.HandleFunc("GET /api/layers/air", s.handleAir)
 	mux.HandleFunc("GET /api/layers/sea", s.handleSea)
+	mux.HandleFunc("GET /api/layers/sar", s.handleSAR)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -155,6 +158,53 @@ func (s *Server) handleSea(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, err)
 		return
+	}
+	s.writeJSON(w, out)
+}
+
+// sarAOI is one monitored area with its measurement series and current verdict.
+type sarAOI struct {
+	Key        string                 `json:"key"`
+	Label      string                 `json:"label"`
+	Country    string                 `json:"country"`
+	Kind       string                 `json:"kind"`
+	Bbox       [4]float64             `json:"bbox"` // lonMin, latMin, lonMax, latMax
+	BrowserURL string                 `json:"browser_url"`
+	Series     []store.SARObservation `json:"series"`
+	Anomaly    bool                   `json:"anomaly"`
+	ZScore     float64                `json:"zscore"`
+	Latest     float64                `json:"latest"`
+	Median     float64                `json:"median"`
+	Baseline   int                    `json:"baseline"`
+}
+
+func (s *Server) handleSAR(w http.ResponseWriter, r *http.Request) {
+	out := make([]sarAOI, 0, len(layers.MonitoredAOIs))
+	for _, aoi := range layers.MonitoredAOIs {
+		series, err := s.db.SARSeries(r.Context(), aoi.Key)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		a := layers.DetectAnomaly(series)
+		z := a.ZScore
+		if math.IsInf(z, 0) || math.IsNaN(z) {
+			z = 0 // JSON has no Infinity; the Detected flag carries the verdict
+		}
+		out = append(out, sarAOI{
+			Key:        aoi.Key,
+			Label:      aoi.Label,
+			Country:    aoi.Country,
+			Kind:       aoi.Kind,
+			Bbox:       [4]float64{aoi.Box.LonMin, aoi.Box.LatMin, aoi.Box.LonMax, aoi.Box.LatMax},
+			BrowserURL: aoi.BrowserURL(),
+			Series:     series,
+			Anomaly:    a.Detected,
+			ZScore:     z,
+			Latest:     a.Latest,
+			Median:     a.Median,
+			Baseline:   a.Baseline,
+		})
 	}
 	s.writeJSON(w, out)
 }

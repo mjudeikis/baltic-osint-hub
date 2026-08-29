@@ -14,6 +14,7 @@ const OVERLAYS = [
   { key: "thermal", label: "Thermal (FIRMS)", cssVar: "--series-8" },
   { key: "air", label: "Air activity", cssVar: "--series-7" },
   { key: "sea", label: "Sea activity", cssVar: "--series-6" },
+  { key: "sites", label: "Radar sites", cssVar: "--series-4" },
 ] as const;
 type OverlayKey = (typeof OVERLAYS)[number]["key"];
 
@@ -35,6 +36,7 @@ export default function IncidentMap({
     thermal: true,
     air: true,
     sea: true,
+    sites: true,
   });
   const [showIncidents, setShowIncidents] = useState(true);
 
@@ -192,6 +194,42 @@ export default function IncidentMap({
         `<strong>⚓ ${esc(p.name)}</strong><br/>${esc(p.event)} · ${esc(p.corridor)} · ${p.sog ?? "?"} kn<br/>${new Date(p.when).toLocaleString("en-GB")}`,
       );
     });
+
+    // SAR monitored sites: outlined always, filled when the latest pass
+    // deviates from the site's own baseline.
+    setGeoJSON(m, "sites", sitesGeoJSON(layers), () => {
+      m.addLayer({
+        id: "sites-fill",
+        type: "fill",
+        source: "sites",
+        paint: {
+          "fill-color": cssColor("--status-serious"),
+          "fill-opacity": ["case", ["get", "anomaly"], 0.35, 0],
+        },
+      });
+      m.addLayer({
+        id: "sites",
+        type: "line",
+        source: "sites",
+        paint: {
+          "line-color": [
+            "case",
+            ["get", "anomaly"],
+            cssColor("--status-serious"),
+            cssColor("--series-4"),
+          ],
+          "line-width": 2,
+        },
+      });
+      bindPopup(m, "sites", (p) =>
+        `<strong>${esc(p.label)}</strong><br/>${esc(p.country)} · ${esc(p.kind)}<br/>` +
+          (p.measured
+            ? `bright pixels ${(p.latest * 100).toFixed(1)}% (baseline ${(p.median * 100).toFixed(1)}%)<br/>` +
+              `${p.anomaly ? "▲ change detected" : "○ nominal"}<br/>`
+            : "no radar measurements yet<br/>") +
+          `<a href="${esc(p.browser)}" target="_blank" rel="noopener noreferrer">inspect imagery ↗</a>`,
+      );
+    });
   }, [layers, loaded]);
 
   // Visibility toggles.
@@ -199,8 +237,11 @@ export default function IncidentMap({
     const m = map.current;
     if (!m || !loaded) return;
     for (const o of OVERLAYS) {
-      if (m.getLayer(o.key)) {
-        m.setLayoutProperty(o.key, "visibility", visible[o.key] ? "visible" : "none");
+      // "sites" is drawn as an outline plus a fill; both follow one toggle.
+      for (const id of o.key === "sites" ? ["sites", "sites-fill"] : [o.key]) {
+        if (m.getLayer(id)) {
+          m.setLayoutProperty(id, "visibility", visible[o.key] ? "visible" : "none");
+        }
       }
     }
   }, [visible, loaded, layers]);
@@ -210,6 +251,7 @@ export default function IncidentMap({
     thermal: layers?.firms.length ?? 0,
     air: layers?.air.length ?? 0,
     sea: layers?.sea.length ?? 0,
+    sites: layers?.sar.length ?? 0,
   };
 
   return (
@@ -301,6 +343,40 @@ function jammingGeoJSON(layers: Layers): GeoJSON.FeatureCollection {
     });
   }
   return { type: "FeatureCollection", features };
+}
+
+function sitesGeoJSON(layers: Layers): GeoJSON.FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: layers.sar.map((a) => {
+      const [lonMin, latMin, lonMax, latMax] = a.bbox;
+      return {
+        type: "Feature",
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [lonMin, latMin],
+              [lonMax, latMin],
+              [lonMax, latMax],
+              [lonMin, latMax],
+              [lonMin, latMin],
+            ],
+          ],
+        },
+        properties: {
+          label: a.label,
+          country: a.country,
+          kind: a.kind,
+          anomaly: a.anomaly && a.baseline >= 8,
+          measured: a.series.length > 0,
+          latest: a.latest,
+          median: a.median,
+          browser: a.browser_url,
+        },
+      };
+    }),
+  };
 }
 
 function pointGeoJSON<T>(
