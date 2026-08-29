@@ -365,6 +365,12 @@ func TestWeeklyAdverseHistoryCountsEvents(t *testing.T) {
 	// Last week, so it falls inside a completed week.
 	lastWeek := time.Now().AddDate(0, 0, -8)
 
+	// Padding so the week clears MinWeeklyVolume and is treated as observed;
+	// without it the week is correctly ignored as barely-collected.
+	for i := 0; i < MinWeeklyVolume; i++ {
+		seed(t, s, ctx, "lsm-en", "filler "+string(rune('a'+i)), "neutral", 1, []string{"LV"}, lastWeek)
+	}
+
 	a := seed(t, s, ctx, "lrt-en", "old event", "negative", 3, []string{"LT"}, lastWeek)
 	b := seed(t, s, ctx, "err-news", "old event", "negative", 3, []string{"LT"}, lastWeek)
 	eventID, err := s.CreateEventFor(ctx, a)
@@ -464,5 +470,62 @@ func TestIncidentsNeedingEmbedding(t *testing.T) {
 	}
 	if len(pending) != 1 {
 		t.Errorf("pending after embedding one = %d, want 1", len(pending))
+	}
+}
+
+// A week we barely collected in is neither quiet nor busy — it is unobserved,
+// and it must not become the baseline the current week is judged against.
+//
+// This is the real false alarm it prevents: on a fresh database, three months
+// of sparse backfill left one stray item in each of three weeks. That produced
+// a history of [1,1,1], the current week's 13 adverse events were compared
+// against a "typical week" of 1, and the dashboard published "rising" when the
+// only thing that had risen was collection coverage.
+func TestWeeklyAdverseHistoryIgnoresBarelyObservedWeeks(t *testing.T) {
+	s, ctx := testStore(t)
+	StateControlledSources = []string{}
+	lastWeek := time.Now().AddDate(0, 0, -8)
+	threeWeeksAgo := time.Now().AddDate(0, 0, -22)
+
+	// A sparse week: one lone item. Not evidence of anything.
+	seed(t, s, ctx, "lrt-en", "lone stray item", "negative", 3, []string{"LT"}, threeWeeksAgo)
+
+	// A properly observed week: MinWeeklyVolume events, only one adverse.
+	for i := 0; i < MinWeeklyVolume; i++ {
+		tone := "neutral"
+		if i == 0 {
+			tone = "negative"
+		}
+		seed(t, s, ctx, "err-news", "observed week item "+string(rune('a'+i)), tone, 2, []string{"EE"}, lastWeek)
+	}
+
+	hist, err := s.WeeklyAdverseHistory(ctx, 12)
+	if err != nil {
+		t.Fatalf("WeeklyAdverseHistory: %v", err)
+	}
+	if len(hist) != 1 {
+		t.Fatalf("history = %v, want exactly the one properly observed week", hist)
+	}
+	if hist[0] != 1 {
+		t.Errorf("observed week adverse = %d, want 1", hist[0])
+	}
+}
+
+// A properly observed week with no adverse events is a real zero and must
+// appear, or the median is computed over only the bad weeks.
+func TestWeeklyAdverseHistoryKeepsGenuineZeroWeeks(t *testing.T) {
+	s, ctx := testStore(t)
+	StateControlledSources = []string{}
+	lastWeek := time.Now().AddDate(0, 0, -8)
+
+	for i := 0; i < MinWeeklyVolume; i++ {
+		seed(t, s, ctx, "lsm-en", "quiet week item "+string(rune('a'+i)), "positive", 2, []string{"LV"}, lastWeek)
+	}
+	hist, err := s.WeeklyAdverseHistory(ctx, 12)
+	if err != nil {
+		t.Fatalf("WeeklyAdverseHistory: %v", err)
+	}
+	if len(hist) != 1 || hist[0] != 0 {
+		t.Errorf("history = %v, want [0] — a busy but favourable week is a real zero", hist)
 	}
 }

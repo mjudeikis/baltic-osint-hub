@@ -110,3 +110,39 @@ func TestConfidenceLabel(t *testing.T) {
 		}
 	}
 }
+
+// The control this project promises: adversary media cannot move our gauge.
+// An earlier version took max severity across ALL members, so a state wire
+// rating an item severity 5 would have pushed the regional posture to Severe.
+func TestAggregateStateMediaCannotSetSeverity(t *testing.T) {
+	ev := aggregate([]eventMember{
+		{source: "lrt-en", tone: "negative", severity: 2, countries: []string{"LT"}, occurredAt: at(11)},
+		{source: "tass-en", tone: "negative", severity: 5, countries: []string{"LT"}, occurredAt: at(11), stateRun: true},
+	})
+	if ev.Severity != 2 {
+		t.Errorf("Severity = %d, want 2 — a state outlet must not set the event's severity", ev.Severity)
+	}
+}
+
+// Nor may it widen the affected-country set, which would put an event on a
+// country's board on an adversary outlet's say-so.
+func TestAggregateStateMediaCannotAddCountries(t *testing.T) {
+	ev := aggregate([]eventMember{
+		{source: "notes-from-poland", tone: "negative", severity: 3, countries: []string{"PL"}, occurredAt: at(11)},
+		{source: "tg:baltnews", tone: "negative", severity: 3, countries: []string{"LT", "LV", "EE"}, occurredAt: at(11), stateRun: true},
+	})
+	if len(ev.Countries) != 1 || ev.Countries[0] != "PL" {
+		t.Errorf("Countries = %v, want [PL] only", ev.Countries)
+	}
+}
+
+// Nor may it backdate the event into an earlier week.
+func TestAggregateStateMediaCannotSetTimestamp(t *testing.T) {
+	ev := aggregate([]eventMember{
+		{source: "err-news", tone: "negative", severity: 3, countries: []string{"EE"}, occurredAt: at(20)},
+		{source: "ria", tone: "negative", severity: 3, countries: []string{"EE"}, occurredAt: at(10), stateRun: true},
+	})
+	if !ev.OccurredAt.Equal(at(20)) {
+		t.Errorf("OccurredAt = %v, want the earliest INDEPENDENT report %v", ev.OccurredAt, at(20))
+	}
+}

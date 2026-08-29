@@ -180,14 +180,38 @@ func (s *Store) RefreshEvent(ctx context.Context, eventID int64) error {
 func aggregate(members []eventMember) Event {
 	ev := Event{TotalReports: len(members)}
 
+	// Every published judgement is taken from independent members only.
+	//
+	// State-controlled outlets stay attached as evidence — the narrative aimed
+	// at the region is itself intelligence — but they must not set severity,
+	// countries, tone or the timestamp. An earlier version computed severity
+	// and countries across all members and only excluded state media from the
+	// tone vote, which meant a Kremlin wire rating an item severity 5 would
+	// have pushed the whole regional posture to Severe. That is precisely the
+	// control this project promises adversary media does not get.
+	//
+	// A state-media-only event falls back to its own members, because
+	// something must be published — but it carries source_count 0 and is
+	// excluded from the posture reading anyway.
+	judging := make([]eventMember, 0, len(members))
+	for _, m := range members {
+		if !m.stateRun {
+			judging = append(judging, m)
+		}
+	}
+	stateOnly := len(judging) == 0
+	if stateOnly {
+		judging = members
+	}
+
 	// Earliest report wins the timestamp: an event happened when it was first
 	// reported, not when the last outlet caught up.
-	ev.OccurredAt = members[0].occurredAt
+	ev.OccurredAt = judging[0].occurredAt
 
 	distinct := map[string]bool{}
 	toneVotes := map[string]int{}
 	countries := []string{}
-	for _, m := range members {
+	for _, m := range judging {
 		if m.severity > ev.Severity {
 			ev.Severity = m.severity
 		}
@@ -199,15 +223,10 @@ func aggregate(members []eventMember) Event {
 		if m.occurredAt.Before(ev.OccurredAt) {
 			ev.OccurredAt = m.occurredAt
 		}
-		// State-controlled outlets are members — we keep the evidence — but
-		// they neither corroborate nor vote. Four Kremlin wires repeating one
-		// claim is one claim, and letting them carry the tone would hand an
-		// adversary the direction of our own reading.
-		if m.stateRun {
-			continue
-		}
-		distinct[m.source] = true
 		toneVotes[m.tone]++
+		if !stateOnly {
+			distinct[m.source] = true
+		}
 	}
 	slices.Sort(countries)
 	ev.Countries = countries
@@ -223,7 +242,7 @@ func aggregate(members []eventMember) Event {
 	}
 	ev.Tone = best
 	if ev.Tone == "" {
-		ev.Tone = members[0].tone // state-media-only event: keep its own tone
+		ev.Tone = judging[0].tone
 	}
 
 	// Representative text and location: the earliest independent member that

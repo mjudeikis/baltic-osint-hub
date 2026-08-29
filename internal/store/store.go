@@ -437,9 +437,30 @@ func (s *Store) Summary(ctx context.Context) ([]SummaryCell, error) {
 // a plain slice so the query layer needs no dependency on it.
 var StateControlledSources []string
 
-// WeeklyAdverseHistory returns adverse-incident counts per ISO week over the
+// MinWeeklyVolume is how many classified events a week must contain before it
+// may serve as a baseline comparison.
+//
+// Without this floor, a week in which the collector ingested one stray item
+// counts as a full week of evidence that "typical" is one event. On a fresh
+// database that produced a real false alarm: three months of sparse
+// backfill left a history of [1, 1, 1], the current week's 13 adverse events
+// were compared against a "typical week" of 1, and the dashboard published
+// "↑ rising" when the only thing that had actually risen was collection
+// coverage.
+//
+// This is the same failure the SAR baseline guard exists for, and the same one
+// that once produced "+7500%" trend readings: a near-empty baseline is not a
+// quiet baseline, and the honest output is "we cannot tell yet".
+const MinWeeklyVolume = 5
+
+// WeeklyAdverseHistory returns adverse-event counts per ISO week over the
 // trailing `weeks`, oldest first, so the dashboard can answer "is this week
 // unusual?" rather than leaving a bare number to be read as alarming.
+//
+// Only weeks carrying at least MinWeeklyVolume classified events are returned,
+// and a qualifying week with no adverse events is returned as a genuine zero.
+// A week we barely collected in is neither quiet nor busy — it is unobserved,
+// and it must not enter the median at all.
 func (s *Store) WeeklyAdverseHistory(ctx context.Context, weeks int) ([]int, error) {
 	rows, err := s.pool.Query(ctx, `
 		WITH units AS (
@@ -454,9 +475,12 @@ func (s *Store) WeeklyAdverseHistory(ctx context.Context, weeks int) ([]int, err
 		    AND NOT (r.source = ANY($2))
 		  GROUP BY unit
 		)
-		SELECT date_trunc('week', occurred_at) AS wk, count(*)
-		FROM units WHERE tone = 'negative'
-		GROUP BY wk ORDER BY wk`, weeks, StateControlledSources)
+		SELECT date_trunc('week', occurred_at) AS wk,
+		       count(*) FILTER (WHERE tone = 'negative') AS adverse
+		FROM units
+		GROUP BY wk
+		HAVING count(*) >= $3
+		ORDER BY wk`, weeks, StateControlledSources, MinWeeklyVolume)
 	if err != nil {
 		return nil, err
 	}
