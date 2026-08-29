@@ -13,7 +13,12 @@ import {
   SummaryCell,
   TimelineBucket,
 } from "./api";
-import { CATEGORIES, COUNTRIES, COUNTRY_NAMES, categoryLabel } from "./taxonomy";
+import {
+  CATEGORIES,
+  COUNTRIES,
+  COUNTRY_NAMES,
+  categoryLabel,
+} from "./taxonomy";
 import ThreatBoard from "./components/ThreatBoard";
 import Timeline from "./components/Timeline";
 import IncidentMap from "./components/IncidentMap";
@@ -42,6 +47,7 @@ export default function App() {
   const [days, setDays] = useState<number>(30);
   const [country, setCountry] = useState("");
   const [category, setCategory] = useState("");
+  const [tone, setTone] = useState("");
   const [summary, setSummary] = useState<SummaryCell[]>([]);
   const [timeline, setTimeline] = useState<TimelineBucket[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -61,9 +67,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    fetchSummary().then(setSummary).catch((e) => setError(String(e)));
-    fetchSources().then(setSources).catch(() => {});
-    fetchLayers().then(setLayers).catch(() => {});
+    fetchSummary()
+      .then(setSummary)
+      .catch((e) => setError(String(e)));
+    fetchSources()
+      .then(setSources)
+      .catch(() => {});
+    fetchLayers()
+      .then(setLayers)
+      .catch(() => {});
   }, [refreshKey]);
 
   useEffect(() => {
@@ -77,10 +89,15 @@ export default function App() {
   }, [days, country, refreshKey]);
 
   useEffect(() => {
-    fetchIncidents({ days, country: country || undefined, category: category || undefined })
+    fetchIncidents({
+      days,
+      country: country || undefined,
+      category: category || undefined,
+      tone: tone || undefined,
+    })
       .then(setIncidents)
       .catch((e) => setError(String(e)));
-  }, [days, country, category, refreshKey]);
+  }, [days, country, category, tone, refreshKey]);
 
   return (
     <div className="container">
@@ -89,13 +106,18 @@ export default function App() {
       <header className="site">
         <h1>Baltic OSINT Hub</h1>
         <p>
-          Open-source tracking of hybrid-threat activity affecting Lithuania, Latvia,
-          Estonia, and Poland — aggregated from public news, CERT, and research feeds.
+          Open-source tracking of hybrid-threat activity affecting Lithuania,
+          Latvia, Estonia, and Poland — aggregated from public news, CERT, and
+          research feeds.
         </p>
       </header>
 
       {error && (
-        <div className="card" role="alert" style={{ color: "var(--status-critical)" }}>
+        <div
+          className="card"
+          role="alert"
+          style={{ color: "var(--status-critical)" }}
+        >
           Failed to load data: {error}
         </div>
       )}
@@ -110,16 +132,38 @@ export default function App() {
           />
 
           <Section id="board" title="Last 7 days by country">
-            <ThreatBoard cells={summary} />
+            <ThreatBoard
+              cells={summary}
+              onSelect={(cc, cat) => {
+                setCountry(cc);
+                setCategory(cat);
+                // The tile counts adverse items, so the feed must match or the
+                // number the reader clicked would not be the number they get.
+                setTone("negative");
+                // Seven days, because the board's numbers are a 7-day count.
+                setDays(7);
+                document
+                  .getElementById("feed")
+                  ?.scrollIntoView({ block: "start" });
+              }}
+            />
           </Section>
 
           <div className="filters" role="group" aria-label="Filters">
             {DAY_PRESETS.map((d) => (
-              <button key={d} aria-pressed={days === d} onClick={() => setDays(d)}>
+              <button
+                key={d}
+                aria-pressed={days === d}
+                onClick={() => setDays(d)}
+              >
                 {d} days
               </button>
             ))}
-            <select value={country} onChange={(e) => setCountry(e.target.value)} aria-label="Country">
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              aria-label="Country"
+            >
               <option value="">All countries</option>
               {COUNTRIES.map((c) => (
                 <option key={c} value={c}>
@@ -127,7 +171,21 @@ export default function App() {
                 </option>
               ))}
             </select>
-            <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category">
+            <select
+              value={tone}
+              onChange={(e) => setTone(e.target.value)}
+              aria-label="Direction"
+            >
+              <option value="">All directions</option>
+              <option value="negative">▼ Adverse only</option>
+              <option value="positive">▲ Favourable only</option>
+              <option value="neutral">● Neutral only</option>
+            </select>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              aria-label="Category"
+            >
               <option value="">All categories</option>
               {CATEGORIES.map((c) => (
                 <option key={c.key} value={c.key}>
@@ -153,13 +211,18 @@ export default function App() {
             />
           </Section>
 
-          <Section id="satellite" title="Satellite change detection — monitored sites">
+          <Section
+            id="satellite"
+            title="Satellite change detection — monitored sites"
+          >
             <SarPanel
               aois={layers?.sar ?? []}
               focused={focusedSite}
               onFocus={(key) => {
                 setFocusedSite(key);
-                document.getElementById("map")?.scrollIntoView({ block: "start" });
+                document
+                  .getElementById("map")
+                  ?.scrollIntoView({ block: "start" });
               }}
             />
           </Section>
@@ -176,12 +239,15 @@ export default function App() {
             <Preparedness posture={posture} />
           </Section>
 
-          <Section id="sources" title="Sources &amp; methodology" defaultOpen={false}>
+          <Section
+            id="sources"
+            title="Sources &amp; methodology"
+            defaultOpen={false}
+          >
             <SourcesPanel sources={sources} />
           </Section>
         </main>
       </div>
-
     </div>
   );
 }

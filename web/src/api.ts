@@ -73,6 +73,7 @@ async function get<T>(path: string): Promise<T> {
 export interface IncidentQuery {
   category?: string;
   country?: string;
+  tone?: string;
   severity?: number;
   days?: number;
   limit?: number;
@@ -81,6 +82,7 @@ export interface IncidentQuery {
 export function fetchIncidents(q: IncidentQuery): Promise<Incident[]> {
   const params = new URLSearchParams();
   if (q.category) params.set("category", q.category);
+  if (q.tone) params.set("tone", q.tone);
   if (q.country) params.set("country", q.country);
   if (q.severity) params.set("severity", String(q.severity));
   if (q.days) params.set("days", String(q.days));

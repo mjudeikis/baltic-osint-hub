@@ -24,6 +24,12 @@ type Sentinel struct {
 	ClientID     string
 	ClientSecret string
 	Client       *http.Client
+
+	// Cached bearer token. Copernicus tokens are short-lived and a full pass
+	// over the watchlist outlives one, so it is refreshed mid-run rather than
+	// fetched once — otherwise every site after the expiry fails with 401.
+	token       string
+	tokenExpiry time.Time
 }
 
 const (
@@ -83,7 +89,7 @@ function evaluatePixel(s) {
   };
 }`, brightThresholdDB)
 
-func (s *Sentinel) token(ctx context.Context) (string, error) {
+func (s *Sentinel) token2(ctx context.Context) (string, error) {
 	form := url.Values{
 		"grant_type":    {"client_credentials"},
 		"client_id":     {s.ClientID},
@@ -102,6 +108,7 @@ func (s *Sentinel) token(ctx context.Context) (string, error) {
 	defer resp.Body.Close()
 	var out struct {
 		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
 		Error       string `json:"error_description"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -110,13 +117,27 @@ func (s *Sentinel) token(ctx context.Context) (string, error) {
 	if out.AccessToken == "" {
 		return "", fmt.Errorf("token: status %d: %s", resp.StatusCode, out.Error)
 	}
+	ttl := time.Duration(out.ExpiresIn) * time.Second
+	if ttl <= 0 {
+		ttl = 10 * time.Minute // conservative default if the field is absent
+	}
+	s.token = out.AccessToken
+	s.tokenExpiry = time.Now().Add(ttl)
 	return out.AccessToken, nil
+}
+
+// validToken returns a token good for at least another minute, refreshing when
+// the cached one is close to expiry.
+func (s *Sentinel) validToken(ctx context.Context) (string, error) {
+	if s.token != "" && time.Now().Before(s.tokenExpiry.Add(-time.Minute)) {
+		return s.token, nil
+	}
+	return s.token2(ctx)
 }
 
 // Run refreshes every AOI's time series and re-evaluates its anomaly state.
 func (s *Sentinel) Run(ctx context.Context, db *store.Store, log *slog.Logger) error {
-	token, err := s.token(ctx)
-	if err != nil {
+	if _, err := s.validToken(ctx); err != nil {
 		return err
 	}
 	to := time.Now().UTC().Truncate(24 * time.Hour)
@@ -134,6 +155,10 @@ func (s *Sentinel) Run(ctx context.Context, db *store.Store, log *slog.Logger) e
 			from = latest.AddDate(0, 0, -sarOverlapDays)
 		}
 
+		token, err := s.validToken(ctx)
+		if err != nil {
+			return err
+		}
 		obs, err := s.statistics(ctx, token, aoi, from, to)
 		if err != nil {
 			log.Warn("sar aoi failed", "aoi", aoi.Key, "err", err)

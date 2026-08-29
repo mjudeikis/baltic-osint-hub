@@ -58,6 +58,7 @@ func (s *Server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 	f := store.IncidentFilter{
 		Category: q.Get("category"),
 		Country:  q.Get("country"),
+		Tone:     q.Get("tone"),
 	}
 	if v, err := strconv.Atoi(q.Get("severity")); err == nil {
 		f.Severity = v

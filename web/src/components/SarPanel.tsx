@@ -145,6 +145,75 @@ export default function SarPanel({
         )}
       </div>
 
+      <details className="sar-legend">
+        <summary>What these columns mean</summary>
+
+        <p className="sar-legend-lead">
+          <strong>Baseline</strong> is a site's normal state, and it decides how much a
+          change is worth. The three are not interchangeable — they need opposite
+          readings.
+        </p>
+        <dl>
+          <dt data-class="empty">Empty</dt>
+          <dd>
+            Unoccupied by design — training ranges and rail loading ramps, which are
+            fields and sidings with nobody stationed there. Quiet is the expected
+            state, so <strong>anything appearing is signal</strong>. These are the
+            cleanest indicators available.
+          </dd>
+
+          <dt data-class="occupied">Occupied</dt>
+          <dd>
+            A permanently manned garrison or air base. Presence means nothing; only a
+            change in density does, and that is a small delta on an already-large
+            number — a weak signal.
+          </dd>
+
+          <dt data-class="hollow">Hollow</dt>
+          <dd>
+            A garrison that <em>should</em> be full but is not, because its unit is
+            committed to Ukraine. Buildings and hardstanding still return radar
+            normally, so it looks like an ordinary garrison — and would look much the
+            same while refilling. Here <strong>"no change" means "cannot tell"</strong>,
+            not "quiet".
+          </dd>
+        </dl>
+
+        <p className="sar-legend-lead">
+          <strong>Status</strong> is this week's verdict against that site's own
+          history.
+        </p>
+        <dl>
+          <dt style={{ color: cssColor("--status-serious") }}>▲ Change detected</dt>
+          <dd>
+            The latest pass is well above the site's own baseline, and the rise is not
+            explained by the scene getting brighter overall. A prompt to open the
+            imagery — not a confirmed deployment.
+          </dd>
+          <dt style={{ color: cssColor("--status-warning") }}>◌ Conditions changed</dt>
+          <dd>
+            The pass was taken under conditions unlike anything in the reference period
+            — rain, harvest, snow or sea state — so no honest comparison is possible.
+            Deliberately neither an alarm nor an all-clear.
+          </dd>
+          <dt style={{ color: cssColor("--status-good") }}>○ Nominal</dt>
+          <dd>In line with its own recent history.</dd>
+          <dt style={{ color: cssColor("--text-muted") }}>○ Baselining</dt>
+          <dd>
+            Fewer than 8 prior passes, so there is not yet enough history to judge
+            against.
+          </dd>
+        </dl>
+
+        <p className="sar-legend-lead">
+          <strong>Depth</strong> is the distance behind the nearest NATO border, and so
+          roughly how much warning a change there would buy. <strong>Now</strong> and{" "}
+          <strong>Typical</strong> are the share of pixels bright enough to indicate
+          metal — vehicles, aircraft, rolling stock — currently and on the site's
+          180-day median.
+        </p>
+      </details>
+
       <div className="sar-table-wrap">
         <table className="sar-table">
           <thead>
@@ -215,6 +284,7 @@ export default function SarPanel({
       {shown.length === 0 && (
         <p style={{ color: "var(--text-muted)" }}>No sites match these filters.</p>
       )}
+
 
       <p className="legend" style={{ color: "var(--text-muted)", display: "block" }}>
         Sites sit on <strong>Russian and Belarusian territory</strong>, ordered with

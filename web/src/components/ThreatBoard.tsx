@@ -23,7 +23,15 @@ function level(adverse: number, maxSev: number, favourable: number): Level {
   return { label: "Quiet", cssVar: "--status-good", symbol: "○" };
 }
 
-export default function ThreatBoard({ cells }: { cells: SummaryCell[] }) {
+export default function ThreatBoard({
+  cells,
+  onSelect,
+}: {
+  cells: SummaryCell[];
+  // Drill-through: a country/category pair filters the incident feed, so the
+  // numbers on this board lead to the items behind them.
+  onSelect: (country: string, category: string) => void;
+}) {
   return (
     <div className="board" role="list" aria-label="Adverse activity by country">
       {COUNTRIES.map((cc) => {
@@ -77,8 +85,14 @@ export default function ThreatBoard({ cells }: { cells: SummaryCell[] }) {
             <ul>
               {top.map((r) => (
                 <li key={r.category}>
-                  <span>{categoryLabel(r.category)}</span>
-                  <span>{r.recent_adverse}</span>
+                  <button
+                    className="tile-drill"
+                    onClick={() => onSelect(cc, r.category)}
+                    title={`Show ${categoryLabel(r.category)} incidents in ${COUNTRY_NAMES[cc]}`}
+                  >
+                    <span>{categoryLabel(r.category)}</span>
+                    <span>{r.recent_adverse}</span>
+                  </button>
                 </li>
               ))}
             </ul>

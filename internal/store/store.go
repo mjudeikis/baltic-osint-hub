@@ -210,6 +210,7 @@ func (s *Store) LastSuccessfulRun(ctx context.Context, source string) (time.Time
 type IncidentFilter struct {
 	Category string
 	Country  string
+	Tone     string
 	Severity int // minimum severity, 0 = any
 	Since    time.Time
 	Limit    int
@@ -229,6 +230,9 @@ func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident
 	}
 	if f.Category != "" {
 		add("i.category=$%d", f.Category)
+	}
+	if f.Tone != "" {
+		add("i.tone=$%d", f.Tone)
 	}
 	if f.Country != "" {
 		add("$%d = ANY(i.countries)", f.Country)
