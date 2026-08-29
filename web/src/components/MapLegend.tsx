@@ -1,4 +1,5 @@
 import { cssColor } from "../taxonomy";
+import { Shape, Swatch } from "../shapes";
 
 // What each map layer is, why it is worth watching, and — the part that
 // matters most on a threat dashboard — what it does NOT mean.
@@ -11,12 +12,16 @@ const LAYERS: {
   key: string;
   label: string;
   cssVar: string;
+  shape: Shape;
+  // Hollow marks are the ones that carry context rather than a finding.
+  filled?: boolean;
   what: string;
   why: string;
   limit: string;
 }[] = [
   {
     key: "incidents",
+    shape: "circle",
     label: "Incidents",
     cssVar: "--seq-3",
     what: "Reported events, classified from news and institutional sources. Colour is severity 1–5; the pin sits where the report named a place.",
@@ -25,6 +30,7 @@ const LAYERS: {
   },
   {
     key: "jamming",
+    shape: "hex",
     label: "GPS jamming",
     cssVar: "--series-2",
     what: "Daily cells from gpsjam.org, shaded by the share of aircraft in that cell reporting degraded navigation accuracy. Derived from ADS-B, published a day or two behind.",
@@ -33,6 +39,7 @@ const LAYERS: {
   },
   {
     key: "thermal",
+    shape: "square",
     label: "Thermal (FIRMS)",
     cssVar: "--series-8",
     what: "NASA VIIRS satellite heat detections, kept only where they fall inside the monitored border sectors.",
@@ -41,6 +48,7 @@ const LAYERS: {
   },
   {
     key: "air",
+    shape: "triangle",
     label: "Air activity",
     cssVar: "--series-7",
     what: "Snapshots of eight border sectors from OpenSky. A flight is kept only if it meets one of three tests: a watchlist callsign (RFF Russian Air Force, RSD Rossiya special flight detachment, NATO mission callsigns), an emergency squawk (7500 hijack, 7600 radio failure, 7700 general emergency), or a Russian- or Belarusian-registered aircraft airborne inside a sector.",
@@ -49,14 +57,17 @@ const LAYERS: {
   },
   {
     key: "sea",
+    shape: "diamond",
     label: "Sea activity",
     cssVar: "--series-6",
-    what: "Live AIS inside the Baltic cable corridors. Highlighted dots are the notable ones: a vessel on the sanctions watchlist, or a transponder going dark. Dimmed dots are routine stops, kept as baseline.",
+    what: "Live AIS inside the Baltic cable corridors. A solid diamond is a notable event — a vessel on the sanctions watchlist, or a transponder going dark. A hollow diamond is a routine stop, kept as baseline.",
     why: "The Baltic's cables and pipelines are the region's most exposed infrastructure, and the 2023–25 incidents followed one pattern: a vessel stopping or slowing over a cable and dragging an anchor. A listed shadow-fleet tanker doing that is the specific thing worth seeing.",
-    limit: "Ships stop constantly and legitimately — for berths, bunkering, crew transfers and weather — which is why plain loitering is dimmed rather than flagged. Vessels at anchor and service craft (pilots, tugs, SAR) are excluded entirely. AIS can also be switched off or spoofed, so a clean corridor is not a safe one.",
+    limit: "Ships stop constantly and legitimately — for berths, bunkering, crew transfers and weather — which is why plain loitering is drawn hollow rather than solid. Vessels at anchor and service craft (pilots, tugs, SAR) are excluded entirely. AIS can also be switched off or spoofed, so a clean corridor is not a safe one.",
   },
   {
     key: "sites",
+    shape: "square",
+    filled: false,
     label: "Radar sites",
     cssVar: "--series-4",
     what: "Monitored locations on the adversary side — Kaliningrad garrisons, Belarusian air bases and training grounds, rail and border chokepoints. Outlined always; filled when the newest Sentinel-1 radar pass departs from that site's own baseline.",
@@ -65,6 +76,7 @@ const LAYERS: {
   },
   {
     key: "cables",
+    shape: "line",
     label: "Cables & pipelines",
     cssVar: "--series-3",
     what: "The routes of Baltic undersea cables and pipelines.",
@@ -73,6 +85,7 @@ const LAYERS: {
   },
   {
     key: "territory",
+    shape: "area",
     label: "RU / BY territory",
     cssVar: "--series-8",
     what: "Shading for Russian and Belarusian territory, including Kaliningrad.",
@@ -86,6 +99,12 @@ export default function MapLegend() {
     <details className="map-legend">
       <summary>What these layers mean</summary>
       <p className="map-legend-lead">
+        <strong>Shape shows which layer a mark belongs to</strong>, so layers
+        stay apart without relying on colour: ● incident, ▲ air, ◆ sea,
+        ■ thermal, ⬢ jamming cell. A <strong>solid</strong> mark is worth attention; a{" "}
+        <strong>hollow</strong> one is context.
+      </p>
+      <p className="map-legend-lead">
         Everything except <strong>Incidents</strong> is a machine measurement —
         a detection, not a verified event. Each entry says what it is worth,
         and what it cannot tell you.
@@ -94,13 +113,7 @@ export default function MapLegend() {
         {LAYERS.map((l) => (
           <div className="map-legend-row" key={l.key}>
             <dt>
-              <span
-                className="swatch"
-                style={{
-                  background: cssColor(l.cssVar),
-                  borderRadius: l.key === "jamming" ? 3 : "50%",
-                }}
-              />
+              <Swatch shape={l.shape} color={cssColor(l.cssVar)} filled={l.filled !== false} />
               {l.label}
             </dt>
             <dd>

@@ -3,6 +3,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { cellToBoundary, cellToLatLng } from "h3-js";
 import MapLegend from "./MapLegend";
+import { makeIcon, Shape, Swatch } from "../shapes";
 import { Incident, Layers } from "../api";
 import { categoryLabel, cssColor, severityColor, SEVERITY_LABELS } from "../taxonomy";
 
@@ -10,15 +11,25 @@ import { categoryLabel, cssColor, severityColor, SEVERITY_LABELS } from "../taxo
 // jamming cells are a one-hue orange ramp (opacity = share of affected
 // aircraft); thermal/air/sea overlays carry identity via categorical slots
 // (red/violet/green) — never rank-assigned.
+// Shape is the layer's identity and is fixed. Colour reinforces it but never
+// carries it alone — see ../shapes.
 const OVERLAYS = [
-  { key: "jamming", label: "GPS jamming", cssVar: "--series-2" },
-  { key: "thermal", label: "Thermal (FIRMS)", cssVar: "--series-8" },
-  { key: "air", label: "Air activity", cssVar: "--series-7" },
-  { key: "sea", label: "Sea activity", cssVar: "--series-6" },
-  { key: "sites", label: "Radar sites", cssVar: "--series-4" },
-  { key: "cables", label: "Cables & pipelines", cssVar: "--series-3" },
-  { key: "territory", label: "RU / BY territory", cssVar: "--series-8" },
-] as const;
+  { key: "jamming", label: "GPS jamming", cssVar: "--series-2", shape: "hex" },
+  { key: "thermal", label: "Thermal (FIRMS)", cssVar: "--series-8", shape: "square" },
+  { key: "air", label: "Air activity", cssVar: "--series-7", shape: "triangle" },
+  { key: "sea", label: "Sea activity", cssVar: "--series-6", shape: "diamond" },
+  { key: "sites", label: "Radar sites", cssVar: "--series-4", shape: "square", hollow: true },
+  { key: "cables", label: "Cables & pipelines", cssVar: "--series-3", shape: "line" },
+  { key: "territory", label: "RU / BY territory", cssVar: "--series-8", shape: "area" },
+] as const satisfies readonly {
+  key: string;
+  label: string;
+  cssVar: string;
+  shape: Shape;
+  // Hollow marks the layers drawn as outlines on the map rather than as
+  // filled marks, so the key matches what is actually rendered.
+  hollow?: boolean;
+}[];
 type OverlayKey = (typeof OVERLAYS)[number]["key"];
 
 const REGION = { latMin: 47, latMax: 63, lonMin: 8, lonMax: 34 };
@@ -71,7 +82,24 @@ export default function IncidentMap({
       attributionControl: { compact: true },
     });
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }));
-    m.on("load", () => setLoaded(true));
+    m.on("load", () => {
+      // Register the shape bitmaps before any symbol layer references them.
+      // A symbol layer whose icon-image is missing renders nothing at all and
+      // logs only a warning, so this must happen on load, not lazily.
+      const surface = cssColor("--surface-1");
+      const icons: [string, Shape, string, boolean][] = [
+        ["sh-thermal", "square", cssColor("--series-8"), true],
+        ["sh-air", "triangle", cssColor("--series-7"), true],
+        ["sh-sea-notable", "diamond", cssColor("--status-warning"), true],
+        ["sh-sea-routine", "diamond", cssColor("--series-6"), false],
+      ];
+      for (const [id, shape, color, filled] of icons) {
+        if (m.hasImage(id)) continue;
+        const img = makeIcon(shape, color, filled, surface);
+        if (img) m.addImage(id, img, { pixelRatio: 4 });
+      }
+      setLoaded(true);
+    });
     map.current = m;
     (window as any).__osintMap = m;
     return () => {
@@ -209,14 +237,14 @@ export default function IncidentMap({
     })), () => {
       m.addLayer({
         id: "thermal",
-        type: "circle",
+        type: "symbol",
         source: "thermal",
-        paint: {
-          "circle-color": cssColor("--series-8"),
-          "circle-radius": ["interpolate", ["linear"], ["get", "frp"], 0, 3, 50, 9],
-          "circle-opacity": 0.75,
-          "circle-stroke-color": cssColor("--surface-1"),
-          "circle-stroke-width": 1,
+        layout: {
+          "icon-image": "sh-thermal",
+          // Fire radiative power drives size: a bigger fire is a bigger mark.
+          "icon-size": ["interpolate", ["linear"], ["get", "frp"], 0, 0.35, 50, 0.8],
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
         },
       });
       bindPopup(m, "thermal", (p) =>
@@ -231,13 +259,13 @@ export default function IncidentMap({
     })), () => {
       m.addLayer({
         id: "air",
-        type: "circle",
+        type: "symbol",
         source: "air",
-        paint: {
-          "circle-color": cssColor("--series-7"),
-          "circle-radius": 7,
-          "circle-stroke-color": cssColor("--surface-1"),
-          "circle-stroke-width": 2,
+        layout: {
+          "icon-image": "sh-air",
+          "icon-size": 0.6,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
         },
       });
       bindPopup(m, "air", (p) =>
@@ -260,17 +288,18 @@ export default function IncidentMap({
     })), () => {
       m.addLayer({
         id: "sea",
-        type: "circle",
+        type: "symbol",
         source: "sea",
-        paint: {
-          "circle-color": [
-            "case", ["==", ["get", "notable"], 1],
-            cssColor("--status-warning"), cssColor("--series-6"),
+        layout: {
+          // Same shape either way — it is the same layer. Solid and larger
+          // for a listed vessel or a transponder going dark; hollow and small
+          // for a routine stop, which is context rather than a finding.
+          "icon-image": [
+            "case", ["==", ["get", "notable"], 1], "sh-sea-notable", "sh-sea-routine",
           ],
-          "circle-radius": ["case", ["==", ["get", "notable"], 1], 8, 4],
-          "circle-opacity": ["case", ["==", ["get", "notable"], 1], 1, 0.45],
-          "circle-stroke-color": cssColor("--surface-1"),
-          "circle-stroke-width": 2,
+          "icon-size": ["case", ["==", ["get", "notable"], 1], 0.7, 0.42],
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
         },
       });
       bindPopup(m, "sea", (p) => {
@@ -399,8 +428,8 @@ export default function IncidentMap({
     <>
       <div className="filters" role="group" aria-label="Map layers" style={{ marginTop: 0, marginBottom: 10 }}>
         <button aria-pressed={showIncidents} onClick={() => setShowIncidents((v) => !v)}>
-          <span className="swatch" style={{ background: cssColor("--seq-3"), borderRadius: "50%", display: "inline-block", width: 10, height: 10, marginRight: 5 }} />
-          Incidents
+          <Swatch shape="circle" color={cssColor("--seq-3")} />
+          <span style={{ marginLeft: 5 }}>Incidents</span>
         </button>
         {OVERLAYS.map((o) => (
           <button
@@ -408,8 +437,8 @@ export default function IncidentMap({
             aria-pressed={visible[o.key]}
             onClick={() => setVisible((v) => ({ ...v, [o.key]: !v[o.key] }))}
           >
-            <span className="swatch" style={{ background: cssColor(o.cssVar), borderRadius: o.key === "jamming" ? 3 : "50%", display: "inline-block", width: 10, height: 10, marginRight: 5 }} />
-            {o.label}
+            <Swatch shape={o.shape} color={cssColor(o.cssVar)} filled={!("hollow" in o && o.hollow)} />
+            <span style={{ marginLeft: 5 }}>{o.label}</span>
             {o.key !== "cables" && o.key !== "territory" && ` (${counts[o.key]})`}
           </button>
         ))}
@@ -418,14 +447,17 @@ export default function IncidentMap({
       <div className="legend">
         {[1, 2, 3, 4, 5].map((s) => (
           <span className="key" key={s}>
-            <span className="swatch" style={{ background: severityColor(s), borderRadius: "50%" }} />
+            {/* Circles, matching the incident markers, and sized by severity
+                the same way the map sizes them. */}
+            <Swatch shape="circle" color={severityColor(s)} size={7 + s} />
             {s} · {SEVERITY_LABELS[s]}
           </span>
         ))}
         <span style={{ color: "var(--text-muted)" }}>
           incident severity · jamming shading = share of affected aircraft (previous day) ·
-          thermal/air/sea are machine detections, not verified incidents · sea shows
-          listed vessels and AIS gaps; routine stops are dimmed
+          shape shows the layer: ● incident, ▲ air, ◆ sea, ■ thermal · thermal/air/sea
+          are machine detections, not verified incidents · a solid ◆ is a listed vessel
+          or an AIS gap, a hollow ◇ is a routine stop
         </span>
       </div>
       <MapLegend />
