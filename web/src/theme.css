@@ -632,3 +632,7 @@ footer.site td {
   margin: 0 0 12px;
   color: var(--text-secondary);
 }
+
+.site-class[data-class="empty"] { color: var(--status-good); }
+.site-class[data-class="hollow"] { color: var(--status-warning); }
+.site-class[data-class="occupied"] { color: var(--text-muted); }

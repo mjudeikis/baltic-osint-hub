@@ -34,7 +34,10 @@ export default function SarPanel({
       </div>
       <p className="legend" style={{ color: "var(--text-muted)", display: "block" }}>
         Sites are watched on <strong>Russian and Belarusian territory</strong>, ordered
-        by how far they sit behind the border — equipment already visible at a NATO
+        by how far they sit behind the border. Weight the <strong>normally empty</strong>
+        ones most: in the 2021–22 Russian build-up, object detection at permanently
+        occupied garrisons fired identically in a quiet spring and a pre-invasion
+        winter, while change at empty ranges and rail ramps discriminated — equipment already visible at a NATO
         crossing carries no warning, so the value is in the depth. Bright-pixel
         fraction from Sentinel-1 VV backscatter (descending passes, 20 m) is a proxy
         for metallic scatterers such as vehicles, aircraft and rolling stock. A
@@ -81,6 +84,13 @@ function SarCard({
           <> · ~{aoi.depth_km} km behind the border</>
         )}
         {aoi.side === "friendly" && <> · NATO side</>}
+      </div>
+      <div className="delta site-class" data-class={aoi.class}>
+        {aoi.class === "empty"
+          ? "◇ normally empty — a clean indicator"
+          : aoi.class === "hollow"
+            ? "◈ hollow — unit committed elsewhere; refilling shows late"
+            : "◆ permanently occupied — weak baseline"}
       </div>
 
       {aoi.series.length > 0 ? (

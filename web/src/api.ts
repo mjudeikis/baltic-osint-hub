@@ -154,6 +154,7 @@ export interface SarAOI {
   country: string;
   kind: string;
   side: string; // adversary | border | friendly
+  class: string; // empty | occupied | hollow
   note: string;
   depth_km: number;
   bbox: [number, number, number, number]; // lonMin, latMin, lonMax, latMax
