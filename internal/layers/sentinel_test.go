@@ -106,6 +106,41 @@ func TestResolutionDegreesGroundSquare(t *testing.T) {
 	}
 }
 
+// Early warning requires watching the adversary's ground. Equipment visible
+// at a NATO-side crossing has already arrived, so a friendly-side AOI carries
+// no warning value and must be a deliberate, justified exception.
+func TestMonitoringLooksOutward(t *testing.T) {
+	var friendly, adversary []string
+	for _, a := range MonitoredAOIs {
+		switch a.Side {
+		case SideAdversary:
+			adversary = append(adversary, a.Key)
+		case SideFriendly:
+			friendly = append(friendly, a.Key)
+		case SideBorder:
+		default:
+			t.Errorf("%s: unknown Side %q", a.Key, a.Side)
+		}
+	}
+	if len(friendly) > 2 {
+		t.Errorf("%d friendly-side AOIs (%v) — monitoring should look outward, not at our own doorstep",
+			len(friendly), friendly)
+	}
+	if len(adversary) < len(MonitoredAOIs)/2 {
+		t.Errorf("only %d of %d AOIs are on adversary territory", len(adversary), len(MonitoredAOIs))
+	}
+	// Warning time comes from depth: shallow sites alone mean no lead time.
+	deep := 0
+	for _, a := range MonitoredAOIs {
+		if a.Side == SideAdversary && a.DepthKm >= 100 {
+			deep++
+		}
+	}
+	if deep < 4 {
+		t.Errorf("only %d deep (>=100km) adversary sites; too little warning time", deep)
+	}
+}
+
 func TestAOIsWellFormed(t *testing.T) {
 	seen := map[string]bool{}
 	for _, a := range MonitoredAOIs {

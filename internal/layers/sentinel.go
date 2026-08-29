@@ -40,7 +40,9 @@ const (
 	// manufacture false anomalies.
 	orbitDirection = "DESCENDING"
 
-	sarWindowDays  = 180
+	sarWindowDays = 180
+	// Trailing window re-requested on every run after the initial backfill.
+	sarOverlapDays = 18
 	sarInterval    = "P6D" // Sentinel-1 revisit over the region
 	sarResolutionM = 20    // metres; halves processing units vs native 10 m
 
@@ -118,10 +120,20 @@ func (s *Sentinel) Run(ctx context.Context, db *store.Store, log *slog.Logger) e
 		return err
 	}
 	to := time.Now().UTC().Truncate(24 * time.Hour)
-	from := to.AddDate(0, 0, -sarWindowDays)
 
 	var failures []string
 	for _, aoi := range MonitoredAOIs {
+		// Only the first run needs the full baseline window. Afterwards ask
+		// for a short trailing window — re-fetching 180 days per AOI per day
+		// would burn the processing-unit budget for data already stored. The
+		// overlap re-covers intervals whose passes may have landed late.
+		from := to.AddDate(0, 0, -sarWindowDays)
+		if latest, ok, err := db.SARLatestInterval(ctx, aoi.Key); err != nil {
+			return err
+		} else if ok {
+			from = latest.AddDate(0, 0, -sarOverlapDays)
+		}
+
 		obs, err := s.statistics(ctx, token, aoi, from, to)
 		if err != nil {
 			log.Warn("sar aoi failed", "aoi", aoi.Key, "err", err)

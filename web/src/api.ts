@@ -1,8 +1,26 @@
+export interface Posture {
+  level: number;
+  level_name: string;
+  headline: string;
+  explanation: string;
+  balance: number;
+  counts: {
+    positive: number;
+    neutral: number;
+    negative: number;
+    negative_by_severity: number[];
+  };
+}
+
+export const fetchPosture = (country?: string) =>
+  get<Posture>(`/api/stats/posture${country ? `?country=${country}` : ""}`);
+
 export interface Incident {
   id: number;
   category: string;
   countries: string[];
   severity: number;
+  tone: string;
   summary: string;
   lat?: number;
   lon?: number;
@@ -22,7 +40,10 @@ export interface SummaryCell {
   country: string;
   category: string;
   recent: number;
+  recent_adverse: number;
+  recent_favourable: number;
   baseline: number;
+  baseline_samples: number;
   max_severity: number;
 }
 
@@ -123,6 +144,9 @@ export interface SarAOI {
   label: string;
   country: string;
   kind: string;
+  side: string; // adversary | border | friendly
+  note: string;
+  depth_km: number;
   bbox: [number, number, number, number]; // lonMin, latMin, lonMax, latMax
   browser_url: string;
   series: SarObservation[];

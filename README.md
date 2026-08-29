@@ -73,6 +73,25 @@ the next invocation.
 LLM spend tracks item volume, not schedule: deduplication means each item is
 classified exactly once regardless of how often the collector runs.
 
+### Tone and regional posture
+
+Every classified item carries a **tone** as well as a severity — favourable,
+neutral or adverse *for the security of the region*, judged independently of
+how consequential it is. A NATO reinforcement is severity 3-4 and favourable; a
+successful arson attack is severity 4 and adverse; an arrest of a saboteur is
+favourable even though its subject is sabotage.
+
+That feeds a single **regional posture** reading (Calm → Watchful → Elevated →
+High → Severe, ascending; deliberately not DEFCON numbering, which counts
+down). Levels 4 and 5 are set by absolute adverse severity and cannot be
+softened by good news, while a week with more favourable than adverse
+developments steps the middle of the scale down one. The banner always shows
+the counts it was derived from, so the reading is auditable rather than a vibe.
+
+This exists because a threat-only feed reads as uniformly dire even in an
+ordinary week — the first live reading was 29 favourable developments against
+6 adverse ones, which the old view rendered as four countries in the red.
+
 ### How SAR change detection works
 
 The Copernicus **Statistical API** does the raster work server-side: an

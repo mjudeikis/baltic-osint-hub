@@ -23,7 +23,7 @@ type Fetcher interface {
 
 // HTTPClient is shared by all fetchers: modest timeout, identifying UA.
 var HTTPClient = &http.Client{
-	Timeout: 30 * time.Second,
+	Timeout:   30 * time.Second,
 	Transport: userAgentTransport{base: http.DefaultTransport},
 }
 

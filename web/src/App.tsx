@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import {
   fetchIncidents,
   fetchLayers,
+  fetchPosture,
+  Posture,
   fetchSources,
   fetchSummary,
   fetchTimeline,
@@ -18,8 +20,21 @@ import IncidentMap from "./components/IncidentMap";
 import Feed from "./components/Feed";
 import SarPanel from "./components/SarPanel";
 import StatusBanner from "./components/StatusBanner";
+import PostureBanner from "./components/PostureBanner";
+import Section from "./components/Section";
+import SideNav, { NavItem } from "./components/SideNav";
+import SourcesPanel from "./components/SourcesPanel";
 
 const DAY_PRESETS = [7, 30, 90] as const;
+
+const NAV_ITEMS: NavItem[] = [
+  { id: "board", label: "By country" },
+  { id: "trend", label: "Trend" },
+  { id: "map", label: "Situation map" },
+  { id: "satellite", label: "Satellite" },
+  { id: "feed", label: "Incident feed" },
+  { id: "sources", label: "Sources" },
+];
 
 export default function App() {
   const [days, setDays] = useState<number>(30);
@@ -30,6 +45,8 @@ export default function App() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [sources, setSources] = useState<SourceStatus[]>([]);
   const [layers, setLayers] = useState<Layers | null>(null);
+  const [posture, setPosture] = useState<Posture | null>(null);
+  const [focusedSite, setFocusedSite] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   // Periodic refresh so a dashboard left open doesn't drift — and so the
@@ -51,6 +68,10 @@ export default function App() {
     fetchTimeline(days, country || undefined)
       .then(setTimeline)
       .catch((e) => setError(String(e)));
+    // Posture follows the country filter so it reads for whatever is on screen.
+    fetchPosture(country || undefined)
+      .then(setPosture)
+      .catch(() => {});
   }, [days, country, refreshKey]);
 
   useEffect(() => {
@@ -77,103 +98,84 @@ export default function App() {
         </div>
       )}
 
-      <section className="card" aria-label="Threat board">
-        <h2>Last 7 days by country</h2>
-        <ThreatBoard cells={summary} />
-      </section>
+      <div className="layout">
+        <SideNav items={NAV_ITEMS} />
 
-      <div className="filters" role="group" aria-label="Filters">
-        {DAY_PRESETS.map((d) => (
-          <button key={d} aria-pressed={days === d} onClick={() => setDays(d)}>
-            {d} days
-          </button>
-        ))}
-        <select value={country} onChange={(e) => setCountry(e.target.value)} aria-label="Country">
-          <option value="">All countries</option>
-          {COUNTRIES.map((c) => (
-            <option key={c} value={c}>
-              {COUNTRY_NAMES[c]}
-            </option>
-          ))}
-        </select>
-        <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category">
-          <option value="">All categories</option>
-          {CATEGORIES.map((c) => (
-            <option key={c.key} value={c.key}>
-              {c.label}
-            </option>
-          ))}
-        </select>
+        <main>
+          <PostureBanner
+            posture={posture}
+            scope={country ? COUNTRY_NAMES[country as never] : ""}
+          />
+
+          <Section id="board" title="Last 7 days by country">
+            <ThreatBoard cells={summary} />
+          </Section>
+
+          <div className="filters" role="group" aria-label="Filters">
+            {DAY_PRESETS.map((d) => (
+              <button key={d} aria-pressed={days === d} onClick={() => setDays(d)}>
+                {d} days
+              </button>
+            ))}
+            <select value={country} onChange={(e) => setCountry(e.target.value)} aria-label="Country">
+              <option value="">All countries</option>
+              {COUNTRIES.map((c) => (
+                <option key={c} value={c}>
+                  {COUNTRY_NAMES[c]}
+                </option>
+              ))}
+            </select>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category">
+              <option value="">All categories</option>
+              {CATEGORIES.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <Section
+            id="trend"
+            title={`Incidents per day${country ? ` — ${COUNTRY_NAMES[country as never]}` : ""}`}
+          >
+            <Timeline buckets={timeline} />
+          </Section>
+
+          <Section id="map" title="Situation map">
+            <IncidentMap
+              incidents={incidents}
+              layers={layers}
+              focusedSite={focusedSite}
+              onFocusHandled={() => setFocusedSite(null)}
+            />
+          </Section>
+
+          <Section id="satellite" title="Satellite change detection — monitored sites">
+            <SarPanel
+              aois={layers?.sar ?? []}
+              focused={focusedSite}
+              onFocus={(key) => {
+                setFocusedSite(key);
+                document.getElementById("map")?.scrollIntoView({ block: "start" });
+              }}
+            />
+          </Section>
+
+          <Section
+            id="feed"
+            title="Incident feed"
+            aside={`${incidents.length} shown${category ? ` · ${categoryLabel(category)}` : ""}`}
+          >
+            <Feed incidents={incidents} />
+          </Section>
+
+          <Section id="sources" title="Sources &amp; methodology" defaultOpen={false}>
+            <SourcesPanel sources={sources} />
+          </Section>
+        </main>
       </div>
 
-      <section className="card" aria-label="Trend">
-        <h2>Incidents per day{country ? ` — ${COUNTRY_NAMES[country as never]}` : ""}</h2>
-        <Timeline buckets={timeline} />
-      </section>
-
-      <section className="card" aria-label="Map">
-        <h2>Situation map</h2>
-        <IncidentMap incidents={incidents} layers={layers} />
-      </section>
-
-      <section className="card" aria-label="Satellite change detection">
-        <h2>Satellite change detection — monitored sites</h2>
-        <SarPanel aois={layers?.sar ?? []} />
-      </section>
-
-      <section className="card" aria-label="Incident feed">
-        <h2>
-          Incident feed
-          {category ? ` — ${categoryLabel(category)}` : ""} ({incidents.length})
-        </h2>
-        <Feed incidents={incidents} />
-      </section>
-
-      <footer className="site">
-        <div className="card">
-          <h2>Sources &amp; methodology</h2>
-          <p>
-            Items are collected hourly from public RSS feeds (LRT, ERR, LSM,
-            Notes from Poland, EUvsDisinfo, CERT.PL, CEPA, Jamestown, ICDS, Warsaw
-            Institute, Lithuanian/Latvian MoD, Estonian Defence Forces), the GDELT
-            news index, public Telegram channels
-            (including Russian state and pro-war channels, monitored as primary sources
-            of adversary messaging — not as trusted reporting), regional subreddits,
-            and Bluesky keyword searches, then automatically classified and summarized
-            by a language model. Map layers add machine measurements: GPS-jamming
-            cells, NASA FIRMS thermal anomalies, aircraft and vessel activity, and
-            Sentinel-1 radar change detection over monitored sites — these are
-            detections, not verified events. Classification is automated
-            and may contain errors — always verify against the linked original source.
-            This dashboard aggregates <em>publicly reported</em> events; it is not an
-            official assessment.
-          </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Source</th>
-                <th>Last fetch</th>
-                <th>Items</th>
-                <th>New</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sources.map((s) => (
-                <tr key={s.source}>
-                  <td>{s.source}</td>
-                  <td>{new Date(s.last_run).toLocaleString("en-GB")}</td>
-                  <td>{s.items_found}</td>
-                  <td>{s.items_new}</td>
-                  <td style={{ color: s.error ? "var(--status-critical)" : undefined }}>
-                    {s.error ? "error" : "ok"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </footer>
     </div>
   );
 }

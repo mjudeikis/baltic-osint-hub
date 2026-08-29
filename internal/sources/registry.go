@@ -11,7 +11,7 @@ const (
 // Sources without public RSS (CERT.LV, NKSC, TVP World) are covered
 // indirectly via GDELT.
 func All() []Fetcher {
-	return []Fetcher{
+	feeds := []Fetcher{
 		// Tier 2 — national English-language news.
 		NewRSS("lrt-en", "https://www.lrt.lt/en/news-in-english?rss", "en", fast),
 		NewRSS("err-news", "https://news.err.ee/rss", "en", fast),
@@ -60,5 +60,75 @@ func All() []Fetcher {
 		NewBluesky("baltic-jamming", `baltic jamming`),
 		NewBluesky("baltic-sabotage", `baltic sabotage`),
 		NewBluesky("baltic-airspace", `baltic airspace violation`),
+	}
+	return append(feeds, extraSources()...)
+}
+
+// extraSources are the second wave: national-language press, security services,
+// EU agencies, and targeted Google News queries. Several exist specifically to
+// balance the feed — arrests, prosecutions, deployments and procurement are
+// news too, and a threat-only source list makes an ordinary week look dire.
+// All URLs verified 2026-08-29.
+func extraSources() []Fetcher {
+	return []Fetcher{
+		// --- Security services & national CERTs ---
+		NewRSS("lt-vsd", "https://www.vsd.lt/rss/", "lt", slow),
+		NewRSS("cert-lv", "https://cert.lv/en/feed/rss/all", "en", slow),
+		NewRSS("ee-ria", "https://www.ria.ee/rss-feeds/rss.xml", "et", slow),
+
+		// --- Government / defence (heavily favourable-leaning) ---
+		NewRSS("ee-mod", "https://www.kaitseministeerium.ee/en/rss-feeds/rss.xml", "en", slow),
+		NewRSS("ee-gov", "https://www.valitsus.ee/en/rss-feeds/rss.xml", "en", slow),
+		NewRSS("ee-mfa", "https://vm.ee/en/rss-feeds/rss.xml", "en", slow),
+		NewRSS("lv-mod-lv", "https://www.mod.gov.lv/lv/rss.xml", "lv", slow),
+
+		// --- EU agencies: interdictions, border ops, sanctions ---
+		NewRSS("frontex", "https://frontex.europa.eu/media-centre/news/news-release/feed", "en", slow),
+		NewRSS("europol", "https://www.europol.europa.eu/rss.xml", "en", slow),
+		NewRSS("ec-press", "https://ec.europa.eu/commission/presscorner/api/rss?language=en", "en", slow),
+
+		// --- National-language press (catches what the English editions omit) ---
+		NewRSS("err-et", "https://www.err.ee/rss", "et", fast),
+		NewRSS("err-ru", "https://rus.err.ee/rss", "ru", fast),
+		NewRSS("postimees", "https://news.postimees.ee/rss", "et", fast),
+		NewRSS("delfi-lv", "https://www.delfi.lv/rss.xml", "lv", fast),
+		NewRSS("lsm-lv", "https://www.lsm.lv/rss/", "lv", fast),
+		NewRSS("diena-lv", "https://www.diena.lv/rss", "lv", slow),
+		NewRSS("15min-lt", "https://www.15min.lt/rss", "lt", fast),
+		NewRSS("delfi-lt", "https://www.delfi.lt/rss/feeds/lithuania.xml", "lt", fast),
+		NewRSS("defence24-pl", "https://defence24.pl/rss", "pl", fast),
+		NewRSS("tvn24", "https://tvn24.pl/najnowsze.xml", "pl", fast),
+		NewRSS("rzeczpospolita", "https://www.rp.pl/rss/1019", "pl", slow),
+		NewRSS("bnn", "https://bnn-news.com/feed", "en", slow),
+
+		// --- Research & investigation ---
+		NewRSS("osw-warsaw", "https://www.osw.waw.pl/en/rss.xml", "en", slow),
+		NewRSS("bellingcat", "https://www.bellingcat.com/feed/", "en", slow),
+		NewRSS("disinfolab", "https://www.disinfo.eu/feed/", "en", slow),
+
+		// --- Maritime: cable incidents and shadow-fleet reporting ---
+		NewRSS("maritime-exec", "https://maritime-executive.com/articles.rss", "en", slow),
+
+		// --- Energy infrastructure ---
+		NewRSS("elering", "https://elering.ee/rss.xml", "et", slow),
+
+		// --- Targeted Google News queries. These are the main lever for a
+		// balanced feed: two of the four exist to surface interdictions and
+		// reinforcement, which generic threat feeds under-report.
+		NewGoogleNews("gnews-arrests", "Baltic OR Lithuania OR Latvia OR Estonia OR Poland saboteur OR spy arrested OR charged OR convicted", "en", "US:en"),
+		NewGoogleNews("gnews-nato", "NATO Baltic deployment OR reinforcement OR air defence", "en", "US:en"),
+		NewGoogleNews("gnews-cable", "Baltic Sea cable OR pipeline damage vessel", "en", "US:en"),
+		NewGoogleNews("gnews-lt", "sabotažas OR diversija OR šnipinėjimas", "lt", "LT:lt"),
+
+		// --- Telegram: Belarus monitoring and Russian investigative outlets ---
+		NewTelegram("zerkalo_io", "ru"),
+		NewTelegram("belarusian_silovik", "ru"),
+		NewTelegram("belamova", "ru"),
+		NewTelegram("mediazzzona", "ru"),
+		NewTelegram("theinsider", "ru"),
+		NewTelegram("LRT_lt", "lt"),
+		// Kremlin-aligned outlet targeting Baltic audiences — monitored to see
+		// the narrative aimed at the region, never as reporting.
+		NewTelegram("baltnews", "ru"),
 	}
 }

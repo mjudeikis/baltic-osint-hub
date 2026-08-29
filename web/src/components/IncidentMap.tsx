@@ -23,9 +23,13 @@ const REGION = { latMin: 47, latMax: 63, lonMin: 8, lonMax: 34 };
 export default function IncidentMap({
   incidents,
   layers,
+  focusedSite,
+  onFocusHandled,
 }: {
   incidents: Incident[];
   layers: Layers | null;
+  focusedSite?: string | null;
+  onFocusHandled?: () => void;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -245,6 +249,47 @@ export default function IncidentMap({
       }
     }
   }, [visible, loaded, layers]);
+
+  // Selecting a site in the satellite panel flies the map to it and opens its
+  // detail popup, so the panel and the map stay one view rather than two.
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !loaded || !focusedSite || !layers) return;
+    const aoi = layers.sar.find((a) => a.key === focusedSite);
+    if (!aoi) return;
+
+    const [lonMin, latMin, lonMax, latMax] = aoi.bbox;
+    m.fitBounds(
+      [
+        [lonMin, latMin],
+        [lonMax, latMax],
+      ],
+      { padding: 140, maxZoom: 12, duration: 900 },
+    );
+    setVisible((v) => ({ ...v, sites: true }));
+
+    const popup = new maplibregl.Popup({ maxWidth: "320px" })
+      .setLngLat([(lonMin + lonMax) / 2, (latMin + latMax) / 2])
+      .setHTML(
+        `<strong>${esc(aoi.label)}</strong><br/>${esc(aoi.country)} · ${esc(aoi.kind)}` +
+          (aoi.side === "adversary" && aoi.depth_km
+            ? ` · ~${aoi.depth_km} km behind the border`
+            : "") +
+          (aoi.note ? `<br/><span style="opacity:.85">${esc(aoi.note)}</span>` : "") +
+          (aoi.series.length
+            ? `<br/><br/>bright pixels <strong>${(aoi.latest * 100).toFixed(1)}%</strong>` +
+              ` (baseline ${(aoi.median * 100).toFixed(1)}%)<br/>` +
+              (aoi.anomaly && aoi.baseline >= 8 ? "▲ change detected" : "○ nominal")
+            : "<br/><br/>no radar measurements yet") +
+          `<br/><a href="${esc(aoi.browser_url)}" target="_blank" rel="noopener noreferrer">inspect imagery ↗</a>`,
+      )
+      .addTo(m);
+
+    onFocusHandled?.();
+    return () => {
+      popup.remove();
+    };
+  }, [focusedSite, loaded, layers, onFocusHandled]);
 
   const counts: Record<OverlayKey, number> = {
     jamming: layers?.gpsjam.length ?? 0,

@@ -1,5 +1,12 @@
 import { Incident } from "../api";
-import { categoryColor, categoryLabel, severityColor, SEVERITY_LABELS } from "../taxonomy";
+import {
+  categoryColor,
+  categoryLabel,
+  cssColor,
+  severityColor,
+  SEVERITY_LABELS,
+  toneDef,
+} from "../taxonomy";
 
 export default function Feed({ incidents }: { incidents: Incident[] }) {
   if (incidents.length === 0) {
@@ -11,9 +18,16 @@ export default function Feed({ incidents }: { incidents: Incident[] }) {
         <article className="feed-item" key={inc.id}>
           <div className="head">
             <span
+              className="tone"
+              style={{ color: cssColor(toneDef(inc.tone).cssVar) }}
+              title="Direction for regional security"
+            >
+              {toneDef(inc.tone).symbol} {toneDef(inc.tone).label}
+            </span>
+            <span
               className="sev"
               style={{ background: severityColor(inc.severity) }}
-              title={`Severity ${inc.severity}`}
+              title={`Severity ${inc.severity} — how consequential, independent of direction`}
             >
               S{inc.severity} {SEVERITY_LABELS[inc.severity]}
             </span>

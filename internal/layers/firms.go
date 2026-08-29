@@ -22,8 +22,10 @@ type FIRMS struct {
 }
 
 // firmsArea covers the whole monitored region in one request; per-sector
-// filtering happens locally.
-const firmsArea = "19.0,50.5,28.6,60.0" // west,south,east,north
+// filtering happens locally. It must extend far enough east to include the
+// Belarusian and Russian staging areas — the approach sectors reach Orsha
+// and the Leningrad oblast.
+const firmsArea = "19.0,50.5,31.0,60.2" // west,south,east,north
 
 func (f *FIRMS) Run(ctx context.Context, db *store.Store, log *slog.Logger) error {
 	url := fmt.Sprintf(

@@ -5,7 +5,7 @@ package layers
 
 // Box is a named geographic bounding box.
 type Box struct {
-	Name                   string
+	Name                           string
 	LatMin, LonMin, LatMax, LonMax float64
 }
 
@@ -13,15 +13,34 @@ func (b Box) Contains(lat, lon float64) bool {
 	return lat >= b.LatMin && lat <= b.LatMax && lon >= b.LonMin && lon <= b.LonMax
 }
 
-// BorderSectors approximate the strips along the RU/BY land borders with
-// LT/LV/EE/PL (plus Kaliningrad). Used to filter FIRMS thermal detections
-// and to watch air activity.
+// BorderSectors are the approach sectors watched for thermal anomalies and
+// air activity. They sit predominantly on RU/BY territory: activity detected
+// on the NATO side of the line has already arrived, and carries no warning.
+// The two NATO-side sectors are kept for a different purpose — airspace
+// violations and incidents happen over friendly ground by definition.
 var BorderSectors = []Box{
-	{Name: "kaliningrad", LatMin: 54.0, LonMin: 19.0, LatMax: 55.5, LonMax: 23.6},
-	{Name: "lt-by", LatMin: 53.8, LonMin: 23.4, LatMax: 56.4, LonMax: 27.0},
-	{Name: "lv-by-ru", LatMin: 55.6, LonMin: 26.5, LatMax: 58.2, LonMax: 28.5},
-	{Name: "ee-ru", LatMin: 57.5, LonMin: 26.8, LatMax: 59.9, LonMax: 28.6},
-	{Name: "pl-by", LatMin: 50.5, LonMin: 22.8, LatMax: 54.0, LonMax: 24.2},
+	// --- Adversary side: approach and staging ---
+	{Name: "kaliningrad", LatMin: 54.3, LonMin: 19.6, LatMax: 55.3, LonMax: 22.9},
+	{Name: "by-grodno-lida", LatMin: 53.5, LonMin: 23.8, LatMax: 54.6, LonMax: 26.3},
+	{Name: "by-brest", LatMin: 51.8, LonMin: 23.6, LatMax: 52.9, LonMax: 25.9},
+	{Name: "by-vitebsk", LatMin: 54.6, LonMin: 26.5, LatMax: 55.8, LonMax: 30.6},
+	{Name: "ru-pskov", LatMin: 56.8, LonMin: 27.6, LatMax: 58.3, LonMax: 30.2},
+	{Name: "ru-leningrad", LatMin: 58.3, LonMin: 28.0, LatMax: 59.9, LonMax: 30.6},
+
+	// --- Friendly side: violation and incident detection, not warning ---
+	{Name: "nato-border-north", LatMin: 57.4, LonMin: 26.0, LatMax: 59.7, LonMax: 28.2},
+	{Name: "nato-border-south", LatMin: 53.6, LonMin: 22.6, LatMax: 56.3, LonMax: 26.9},
+}
+
+// AdversarySectors is the subset that carries early-warning value.
+func AdversarySectors() []Box {
+	out := make([]Box, 0, len(BorderSectors))
+	for _, b := range BorderSectors {
+		if b.Name != "nato-border-north" && b.Name != "nato-border-south" {
+			out = append(out, b)
+		}
+	}
+	return out
 }
 
 // CableCorridors approximate the Baltic undersea cable/pipeline zones for the

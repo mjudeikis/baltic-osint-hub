@@ -40,6 +40,7 @@ type Incident struct {
 	Category   string    `json:"category"`
 	Countries  []string  `json:"countries"`
 	Severity   int       `json:"severity"`
+	Tone       string    `json:"tone"`
 	SummaryEN  string    `json:"summary"`
 	Lat        *float64  `json:"lat,omitempty"`
 	Lon        *float64  `json:"lon,omitempty"`
@@ -177,10 +178,10 @@ func (s *Store) SetItemStatus(ctx context.Context, id int64, status string) erro
 
 func (s *Store) InsertIncident(ctx context.Context, inc *Incident) error {
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO incidents (raw_item_id, category, countries, severity, summary_en, lat, lon, confidence, occurred_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		`INSERT INTO incidents (raw_item_id, category, countries, severity, tone, summary_en, lat, lon, confidence, occurred_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		 ON CONFLICT (raw_item_id) DO NOTHING`,
-		inc.RawItemID, inc.Category, inc.Countries, inc.Severity, inc.SummaryEN,
+		inc.RawItemID, inc.Category, inc.Countries, inc.Severity, inc.Tone, inc.SummaryEN,
 		inc.Lat, inc.Lon, inc.Confidence, inc.OccurredAt)
 	return err
 }
@@ -216,7 +217,7 @@ type IncidentFilter struct {
 }
 
 func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident, error) {
-	q := `SELECT i.id, i.raw_item_id, i.category, i.countries, i.severity, i.summary_en,
+	q := `SELECT i.id, i.raw_item_id, i.category, i.countries, i.severity, i.tone, i.summary_en,
 	             i.lat, i.lon, i.confidence, i.occurred_at, r.source, r.url, r.title
 	      FROM incidents i JOIN raw_items r ON r.id = i.raw_item_id WHERE 1=1`
 	args := []any{}
@@ -252,7 +253,7 @@ func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident
 	for rows.Next() {
 		var inc Incident
 		if err := rows.Scan(&inc.ID, &inc.RawItemID, &inc.Category, &inc.Countries, &inc.Severity,
-			&inc.SummaryEN, &inc.Lat, &inc.Lon, &inc.Confidence, &inc.OccurredAt,
+			&inc.Tone, &inc.SummaryEN, &inc.Lat, &inc.Lon, &inc.Confidence, &inc.OccurredAt,
 			&inc.Source, &inc.URL, &inc.Title); err != nil {
 			return nil, err
 		}
@@ -295,22 +296,37 @@ func (s *Store) Timeline(ctx context.Context, since time.Time, country string) (
 }
 
 type SummaryCell struct {
-	Country   string  `json:"country"`
-	Category    string  `json:"category"`
-	Recent      int     `json:"recent"`   // count in the last 7 days
-	Baseline    float64 `json:"baseline"` // avg 7-day count over the prior 28 days
-	MaxSeverity int     `json:"max_severity"`
+	Country  string `json:"country"`
+	Category string `json:"category"`
+	Recent   int    `json:"recent"` // all incidents in the last 7 days
+	// Tone split of the recent window — a country with 14 favourable and 2
+	// adverse items is not "16 incidents worth of trouble".
+	RecentAdverse    int     `json:"recent_adverse"`
+	RecentFavourable int     `json:"recent_favourable"`
+	Baseline         float64 `json:"baseline"`         // avg 7-day count of adverse items over the prior 28 days
+	BaselineSamples  int     `json:"baseline_samples"` // adverse items backing that baseline
+	MaxSeverity      int     `json:"max_severity"`     // max severity among ADVERSE items only
 }
 
-// Summary computes per country×category: last-7-day count vs the average
-// 7-day count over the preceding 28 days, plus max severity in the window.
+// Summary computes per country×category: the last-7-day tone split against an
+// adverse-only baseline. Severity and baseline deliberately ignore favourable
+// items, so a week of defence announcements cannot inflate a threat reading.
 func (s *Store) Summary(ctx context.Context) ([]SummaryCell, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.country, i.category,
 		       count(*) FILTER (WHERE i.occurred_at >= now() - interval '7 days') AS recent,
+		       count(*) FILTER (WHERE i.occurred_at >= now() - interval '7 days'
+		                          AND i.tone = 'negative') AS recent_adverse,
+		       count(*) FILTER (WHERE i.occurred_at >= now() - interval '7 days'
+		                          AND i.tone = 'positive') AS recent_favourable,
 		       count(*) FILTER (WHERE i.occurred_at >= now() - interval '35 days'
-		                          AND i.occurred_at <  now() - interval '7 days')::float / 4.0 AS baseline,
-		       COALESCE(max(i.severity) FILTER (WHERE i.occurred_at >= now() - interval '7 days'), 0) AS max_sev
+		                          AND i.occurred_at <  now() - interval '7 days'
+		                          AND i.tone = 'negative')::float / 4.0 AS baseline,
+		       count(*) FILTER (WHERE i.occurred_at >= now() - interval '35 days'
+		                          AND i.occurred_at <  now() - interval '7 days'
+		                          AND i.tone = 'negative') AS baseline_samples,
+		       COALESCE(max(i.severity) FILTER (WHERE i.occurred_at >= now() - interval '7 days'
+		                          AND i.tone = 'negative'), 0) AS max_sev
 		FROM incidents i, unnest(i.countries) AS c(country)
 		WHERE i.occurred_at >= now() - interval '35 days'
 		GROUP BY c.country, i.category`)
@@ -321,12 +337,50 @@ func (s *Store) Summary(ctx context.Context) ([]SummaryCell, error) {
 	cells := []SummaryCell{}
 	for rows.Next() {
 		var c SummaryCell
-		if err := rows.Scan(&c.Country, &c.Category, &c.Recent, &c.Baseline, &c.MaxSeverity); err != nil {
+		if err := rows.Scan(&c.Country, &c.Category, &c.Recent, &c.RecentAdverse,
+			&c.RecentFavourable, &c.Baseline, &c.BaselineSamples, &c.MaxSeverity); err != nil {
 			return nil, err
 		}
 		cells = append(cells, c)
 	}
 	return cells, rows.Err()
+}
+
+// ToneCounts returns, for the last `days`, how many incidents carried each
+// tone plus the severity histogram of the adverse ones. Optionally scoped to
+// one country.
+func (s *Store) ToneCounts(ctx context.Context, days int, country string) (map[string]int, [6]int, error) {
+	var sev [6]int
+	byTone := map[string]int{}
+
+	// make_interval keeps `days` a genuine int parameter; string-concatenating
+	// it leaves pgx unable to infer the type.
+	q := `SELECT tone, severity, count(*) FROM incidents
+	      WHERE occurred_at >= now() - make_interval(days => $1)`
+	args := []any{days}
+	if country != "" {
+		q += ` AND $2 = ANY(countries)`
+		args = append(args, country)
+	}
+	q += ` GROUP BY tone, severity`
+
+	rows, err := s.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, sev, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var tone string
+		var severity, n int
+		if err := rows.Scan(&tone, &severity, &n); err != nil {
+			return nil, sev, err
+		}
+		byTone[tone] += n
+		if tone == "negative" && severity >= 1 && severity <= 5 {
+			sev[severity] += n
+		}
+	}
+	return byTone, sev, rows.Err()
 }
 
 // SourceStatuses returns the most recent run per source.

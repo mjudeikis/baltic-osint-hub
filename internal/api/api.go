@@ -11,6 +11,7 @@ import (
 
 	"github.com/mjudeikis/baltic-osint-hub/internal/enrich"
 	"github.com/mjudeikis/baltic-osint-hub/internal/layers"
+	"github.com/mjudeikis/baltic-osint-hub/internal/posture"
 	"github.com/mjudeikis/baltic-osint-hub/internal/store"
 )
 
@@ -28,6 +29,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/incidents", s.handleIncidents)
 	mux.HandleFunc("GET /api/stats/timeline", s.handleTimeline)
 	mux.HandleFunc("GET /api/stats/summary", s.handleSummary)
+	mux.HandleFunc("GET /api/stats/posture", s.handlePosture)
 	mux.HandleFunc("GET /api/sources", s.handleSources)
 	mux.HandleFunc("GET /api/meta", s.handleMeta)
 	mux.HandleFunc("GET /api/layers/firms", s.handleFIRMS)
@@ -100,6 +102,24 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, cells)
 }
 
+// handlePosture publishes the overall regional reading plus the tone balance
+// it was derived from, so the number is auditable rather than a black box.
+func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
+	country := r.URL.Query().Get("country")
+	byTone, sev, err := s.db.ToneCounts(r.Context(), 7, country)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	reading := posture.Evaluate(posture.Counts{
+		Positive:           byTone[enrich.TonePositive],
+		Neutral:            byTone[enrich.ToneNeutral],
+		Negative:           byTone[enrich.ToneNegative],
+		NegativeBySeverity: sev,
+	})
+	s.writeJSON(w, reading)
+}
+
 func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {
 	statuses, err := s.db.SourceStatuses(r.Context())
 	if err != nil {
@@ -114,6 +134,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, _ *http.Request) {
 	s.writeJSON(w, map[string]any{
 		"categories": enrich.Categories,
 		"countries":  enrich.Countries,
+		"tones":      enrich.Tones,
 	})
 }
 
@@ -168,6 +189,9 @@ type sarAOI struct {
 	Label      string                 `json:"label"`
 	Country    string                 `json:"country"`
 	Kind       string                 `json:"kind"`
+	Side       string                 `json:"side"`
+	Note       string                 `json:"note"`
+	DepthKm    int                    `json:"depth_km"`
 	Bbox       [4]float64             `json:"bbox"` // lonMin, latMin, lonMax, latMax
 	BrowserURL string                 `json:"browser_url"`
 	Series     []store.SARObservation `json:"series"`
@@ -196,6 +220,9 @@ func (s *Server) handleSAR(w http.ResponseWriter, r *http.Request) {
 			Label:      aoi.Label,
 			Country:    aoi.Country,
 			Kind:       aoi.Kind,
+			Side:       aoi.Side,
+			Note:       aoi.Note,
+			DepthKm:    aoi.DepthKm,
 			Bbox:       [4]float64{aoi.Box.LonMin, aoi.Box.LatMin, aoi.Box.LonMax, aoi.Box.LatMax},
 			BrowserURL: aoi.BrowserURL(),
 			Series:     series,

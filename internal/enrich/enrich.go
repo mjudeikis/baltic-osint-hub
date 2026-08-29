@@ -21,12 +21,24 @@ var Categories = []string{
 // Countries uses ISO 3166-1 alpha-2, limited to the monitored region.
 var Countries = []string{"LT", "LV", "EE", "PL"}
 
+// Tone is the direction of an item for regional security — the dashboard
+// would otherwise read as uniformly dire, when much of the reporting is
+// defensive progress rather than adversary success.
+const (
+	ToneNegative = "negative" // adversary succeeded, or the region lost ground
+	TonePositive = "positive" // the region gained ground: defence, interdiction, resilience
+	ToneNeutral  = "neutral"  // analysis, statements, routine activity, context
+)
+
+var Tones = []string{TonePositive, ToneNeutral, ToneNegative}
+
 type Verdict struct {
 	ID        int64    `json:"id"`
 	Relevant  bool     `json:"relevant"`
 	Category  string   `json:"category"`
 	Countries []string `json:"countries"`
 	Severity  int      `json:"severity"`
+	Tone      string   `json:"tone"`
 	Summary   string   `json:"summary"`
 	Lat       *float64 `json:"lat"`
 	Lon       *float64 `json:"lon"`
@@ -62,12 +74,19 @@ For each numbered item, decide whether it reports a concrete threat-related even
 
 NOT relevant: general politics, economy, sports, culture, Ukraine-war battlefield news without direct Baltic/Poland connection, EU policy without a threat dimension, historical retrospectives.
 
-Severity scale: 1 = analysis/statements, 2 = minor incident or elevated rhetoric, 3 = notable incident (jamming episode, arrest, small sabotage), 4 = serious incident (infrastructure damaged, airspace violated by military aircraft, major cyberattack), 5 = critical (casualties, article-5-adjacent, major infrastructure destroyed).
+Severity scale (how consequential, regardless of who benefits): 1 = analysis/statements, 2 = minor incident or elevated rhetoric, 3 = notable incident (jamming episode, arrest, small sabotage), 4 = serious incident (infrastructure damaged, airspace violated by military aircraft, major cyberattack), 5 = critical (casualties, article-5-adjacent, major infrastructure destroyed).
+
+Tone — judge every item from the perspective of the security of Lithuania, Latvia, Estonia and Poland, and be honest in both directions:
+- "negative": the adversary succeeded or the region lost ground. Sabotage that worked, airspace actually violated, a cyberattack that landed, a new threat capability deployed against the region, coercion that achieved its aim.
+- "positive": the region gained ground. Saboteurs or spies arrested, charged or convicted; an attack thwarted or intercepted; air defence, troops or capabilities deployed or delivered to the region; allied reinforcement; new funding or infrastructure for defence; sanctions or expulsions imposed; resilience improving; de-escalation.
+- "neutral": analysis, commentary, statements without action, routine exercises, historical or background reporting, items where the direction is genuinely unclear.
+
+Tone and severity are independent. A large NATO reinforcement is severity 3-4 and "positive". A successful arson attack is severity 4 and "negative". Do not mark something "negative" merely because it concerns a threat — an article about catching a saboteur is "positive" even though the subject is sabotage. Most defence-procurement and exercise news is "positive" or "neutral", not "negative".
 
 Items may be in Lithuanian, Latvian, Estonian, Polish, Russian, or English. Always write the summary in English, one to two factual sentences. If the text names a specific location, give approximate lat/lon; otherwise null.
 
 Reply with ONLY a JSON array, one object per item:
-[{"id": <item id>, "relevant": true|false, "category": "<one of the categories>", "countries": ["LT"|"LV"|"EE"|"PL", ...], "severity": 1-5, "summary": "<english summary>", "lat": null|number, "lon": null|number}]
+[{"id": <item id>, "relevant": true|false, "category": "<one of the categories>", "countries": ["LT"|"LV"|"EE"|"PL", ...], "severity": 1-5, "tone": "positive"|"negative"|"neutral", "summary": "<english summary>", "lat": null|number, "lon": null|number}]
 For irrelevant items only id and relevant=false are needed.`
 
 // ClassifyBatch sends up to ~20 items and returns verdicts keyed by item ID.
@@ -112,6 +131,10 @@ func parseVerdicts(text string) ([]Verdict, error) {
 	for _, c := range Categories {
 		valid[c] = true
 	}
+	validTone := map[string]bool{}
+	for _, t := range Tones {
+		validTone[t] = true
+	}
 	for i := range verdicts {
 		v := &verdicts[i]
 		if !v.Relevant {
@@ -119,6 +142,11 @@ func parseVerdicts(text string) ([]Verdict, error) {
 		}
 		if !valid[v.Category] {
 			v.Category = "political"
+		}
+		// Unknown or missing tone must not silently become "negative" —
+		// neutral is the honest default when the model didn't commit.
+		if !validTone[v.Tone] {
+			v.Tone = ToneNeutral
 		}
 		if v.Severity < 1 {
 			v.Severity = 1

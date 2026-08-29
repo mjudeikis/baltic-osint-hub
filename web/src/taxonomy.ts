@@ -47,6 +47,36 @@ export function cssColor(varName: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
 }
 
+// Tone — the direction of an item for regional security. Always rendered as
+// colour + symbol + word so it never depends on colour alone.
+export interface ToneDef {
+  key: string;
+  label: string;
+  symbol: string;
+  cssVar: string;
+}
+
+export const TONES: Record<string, ToneDef> = {
+  positive: { key: "positive", label: "Favourable", symbol: "▲", cssVar: "--status-good" },
+  neutral: { key: "neutral", label: "Neutral", symbol: "●", cssVar: "--text-muted" },
+  negative: { key: "negative", label: "Adverse", symbol: "▼", cssVar: "--status-critical" },
+};
+
+export const toneDef = (key: string): ToneDef => TONES[key] ?? TONES.neutral;
+
+// Posture ladder, ascending: 1 calmest, 5 worst. Deliberately not DEFCON
+// numbering (which counts down) — the word carries the meaning.
+export const POSTURE_LEVELS: { level: number; cssVar: string }[] = [
+  { level: 1, cssVar: "--status-good" },
+  { level: 2, cssVar: "--status-good" },
+  { level: 3, cssVar: "--status-warning" },
+  { level: 4, cssVar: "--status-serious" },
+  { level: 5, cssVar: "--status-critical" },
+];
+
+export const postureColor = (level: number): string =>
+  cssColor(POSTURE_LEVELS.find((p) => p.level === level)?.cssVar ?? "--text-muted");
+
 export const SEVERITY_LABELS: Record<number, string> = {
   1: "Analysis",
   2: "Minor",

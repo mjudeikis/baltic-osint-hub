@@ -3,7 +3,15 @@ import { cssColor } from "../taxonomy";
 
 // Sentinel-1 change detection: one card per monitored site. Status is carried
 // by icon + label + colour together, never colour alone.
-export default function SarPanel({ aois }: { aois: SarAOI[] }) {
+export default function SarPanel({
+  aois,
+  onFocus,
+  focused,
+}: {
+  aois: SarAOI[];
+  onFocus: (key: string) => void;
+  focused: string | null;
+}) {
   if (aois.length === 0) {
     return <p style={{ color: "var(--text-muted)" }}>No monitored sites configured.</p>;
   }
@@ -21,21 +29,32 @@ export default function SarPanel({ aois }: { aois: SarAOI[] }) {
     <>
       <div className="board">
         {aois.map((a) => (
-          <SarCard key={a.key} aoi={a} />
+          <SarCard key={a.key} aoi={a} onFocus={onFocus} focused={focused === a.key} />
         ))}
       </div>
       <p className="legend" style={{ color: "var(--text-muted)", display: "block" }}>
-        Bright-pixel fraction from Sentinel-1 VV backscatter (descending passes,
-        20 m) — a proxy for metallic scatterers such as vehicles, aircraft and
-        rolling stock. A flagged site means the latest pass sits far above its own
-        180-day baseline; it is a prompt to look at the imagery, not a confirmed
-        deployment. Weather, farm machinery and construction all move this number.
+        Sites are watched on <strong>Russian and Belarusian territory</strong>, ordered
+        by how far they sit behind the border — equipment already visible at a NATO
+        crossing carries no warning, so the value is in the depth. Bright-pixel
+        fraction from Sentinel-1 VV backscatter (descending passes, 20 m) is a proxy
+        for metallic scatterers such as vehicles, aircraft and rolling stock. A
+        flagged site means the latest pass sits far above its own 180-day baseline;
+        it is a prompt to look at the imagery, not a confirmed deployment. Weather,
+        farm machinery and construction all move this number.
       </p>
     </>
   );
 }
 
-function SarCard({ aoi }: { aoi: SarAOI }) {
+function SarCard({
+  aoi,
+  onFocus,
+  focused,
+}: {
+  aoi: SarAOI;
+  onFocus: (key: string) => void;
+  focused: boolean;
+}) {
   const enough = aoi.baseline >= 8;
   const status = !enough
     ? { label: "Baselining", symbol: "○", cssVar: "--text-muted" }
@@ -44,7 +63,7 @@ function SarCard({ aoi }: { aoi: SarAOI }) {
       : { label: "Nominal", symbol: "○", cssVar: "--status-good" };
 
   return (
-    <div className="tile">
+    <div className="tile" data-focused={focused || undefined}>
       <div className="country">
         <span>{aoi.label}</span>
         <span className="level" style={{ color: cssColor(status.cssVar) }}>
@@ -54,6 +73,10 @@ function SarCard({ aoi }: { aoi: SarAOI }) {
       </div>
       <div className="delta" style={{ marginTop: 2 }}>
         {aoi.country} · {aoi.kind}
+        {aoi.side === "adversary" && aoi.depth_km > 0 && (
+          <> · ~{aoi.depth_km} km behind the border</>
+        )}
+        {aoi.side === "friendly" && <> · NATO side</>}
       </div>
 
       {aoi.series.length > 0 ? (
@@ -80,7 +103,12 @@ function SarCard({ aoi }: { aoi: SarAOI }) {
         </div>
       )}
 
-      <div style={{ marginTop: 8 }}>
+      {aoi.note && <p className="site-note">{aoi.note}</p>}
+
+      <div className="site-actions">
+        <button className="linklike" onClick={() => onFocus(aoi.key)}>
+          ◎ show on map
+        </button>
         <a href={aoi.browser_url} target="_blank" rel="noopener noreferrer">
           🛰 inspect imagery ↗
         </a>

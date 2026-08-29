@@ -197,6 +197,7 @@ func classify(ctx context.Context, log *slog.Logger, db *store.Store, cls *enric
 				Category:   v.Category,
 				Countries:  v.Countries,
 				Severity:   v.Severity,
+				Tone:       v.Tone,
 				SummaryEN:  v.Summary,
 				Lat:        v.Lat,
 				Lon:        v.Lon,

@@ -58,6 +58,18 @@ func (s *Store) SARSeries(ctx context.Context, aoi string) ([]SARObservation, er
 	return out, rows.Err()
 }
 
+// SARLatestInterval returns the newest stored interval start for an AOI, and
+// whether the AOI has any history at all.
+func (s *Store) SARLatestInterval(ctx context.Context, aoi string) (time.Time, bool, error) {
+	var t *time.Time
+	err := s.pool.QueryRow(ctx,
+		`SELECT max(interval_start) FROM layer_sar WHERE aoi = $1`, aoi).Scan(&t)
+	if err != nil || t == nil {
+		return time.Time{}, false, err
+	}
+	return *t, true, nil
+}
+
 // InsertSARAnomaly records a verdict once per AOI+interval. Returns true if
 // this was a new detection.
 func (s *Store) InsertSARAnomaly(ctx context.Context, aoi string, intervalStart time.Time,
