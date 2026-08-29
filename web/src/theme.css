@@ -588,3 +588,21 @@ footer.site td {
   border-color: var(--series-1);
   box-shadow: 0 0 0 1px var(--series-1) inset;
 }
+
+/* Repository link sits at the far end of the status strip. */
+.banner-repo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.banner-repo:hover {
+  color: var(--text-primary);
+}
+@media (max-width: 700px) {
+  .banner-repo {
+    margin-left: 0;
+  }
+}

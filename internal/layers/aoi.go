@@ -197,6 +197,99 @@ var MonitoredAOIs = []AOI{
 		Box: Box{Name: "nesterov", LatMin: 54.60, LonMin: 22.53, LatMax: 54.70, LonMax: 22.70},
 	},
 
+	// ---- Training ranges ("polygons") ----
+	// The highest-value category for change detection: a range sits empty most
+	// of the year, so anything parked on it is a clean signal. A permanently
+	// occupied barracks, by contrast, has almost no baseline delta.
+	{
+		Key: "dretun", Label: "Dretun range", Country: "BY", Kind: "training",
+		Note: "Large Belarusian range roughly 60 km from the Latvian border; used for Russian–Belarusian joint training.",
+		Side: SideAdversary, DepthKm: 60,
+		Box: Box{Name: "dretun", LatMin: 55.64, LonMin: 28.62, LatMax: 55.80, LonMax: 28.88},
+	},
+	{
+		Key: "gozha", Label: "Gozhsky range (Grodno)", Country: "BY", Kind: "training",
+		Note: "Range beside the Polish and Lithuanian tri-border, on the northern approach to the Suwałki gap.",
+		Side: SideAdversary, DepthKm: 20,
+		Box: Box{Name: "gozha", LatMin: 53.78, LonMin: 23.72, LatMax: 53.92, LonMax: 23.96},
+	},
+	{
+		Key: "losvida", Label: "Losvida range (Vitebsk)", Country: "BY", Kind: "training",
+		Note: "Range north-east of Vitebsk, on the axis between Russia and the Latvian border.",
+		Side: SideAdversary, DepthKm: 150,
+		Box: Box{Name: "losvida", LatMin: 55.28, LonMin: 29.94, LatMax: 55.42, LonMax: 30.18},
+	},
+	{
+		Key: "domanovo", Label: "Domanovo / Ruzhany", Country: "BY", Kind: "training",
+		Note: "Former strategic-missile site reactivated as a deployment area; watched for missile and air-defence hardware.",
+		Side: SideAdversary, DepthKm: 120,
+		Box: Box{Name: "domanovo", LatMin: 52.78, LonMin: 24.76, LatMax: 52.92, LonMax: 24.98},
+	},
+	{
+		Key: "strugi-krasnye", Label: "Strugi Krasnye range & airfield", Country: "RU", Kind: "training",
+		Note: "Range and airfield between Pskov and Luga, on the approach to south-eastern Estonia.",
+		Side: SideAdversary, DepthKm: 110,
+		Box: Box{Name: "strugi-krasnye", LatMin: 58.20, LonMin: 29.02, LatMax: 58.34, LonMax: 29.26},
+	},
+	{
+		Key: "pravdinsk-range", Label: "Pravdinsk range (Kaliningrad)", Country: "RU-KGD", Kind: "training",
+		Note: "The main manoeuvre area inside Kaliningrad oblast, where the exclave's units exercise.",
+		Side: SideAdversary, DepthKm: 45,
+		Box: Box{Name: "pravdinsk-range", LatMin: 54.38, LonMin: 20.94, LatMax: 54.52, LonMax: 21.16},
+	},
+	{
+		// The Yelnya vehicle park was the clearest early public indicator of
+		// the 2021 build-up, months before the invasion.
+		Key: "yelnya", Label: "Yelnya storage & range", Country: "RU", Kind: "training",
+		Note: "Deep staging area for the 144th Motor Rifle Division. Its filling vehicle park was the earliest widely-reported open-source indicator ahead of 2022.",
+		Side: SideAdversary, DepthKm: 450,
+		Box: Box{Name: "yelnya", LatMin: 54.50, LonMin: 33.05, LatMax: 54.66, LonMax: 33.30},
+	},
+
+	// ---- Additional garrisons and air bases ----
+	{
+		Key: "vitsebsk", Label: "Vitsebsk — 103rd Airborne Bde", Country: "BY", Kind: "garrison",
+		Note: "Belarus's airborne brigade. Like their Russian counterparts, airborne units are among the first to move.",
+		Side: SideAdversary, DepthKm: 150,
+		Box: Box{Name: "vitsebsk", LatMin: 55.13, LonMin: 30.10, LatMax: 55.25, LonMax: 30.32},
+	},
+	{
+		Key: "barysaw", Label: "Barysaw — 120th Mech Bde", Country: "BY", Kind: "garrison",
+		Note: "One of Belarus's two main mechanised brigades, sitting on the Minsk–Moscow corridor.",
+		Side: SideAdversary, DepthKm: 240,
+		Box: Box{Name: "barysaw", LatMin: 54.17, LonMin: 28.40, LatMax: 54.29, LonMax: 28.62},
+	},
+	{
+		Key: "grodno", Label: "Grodno — 6th Mech Bde", Country: "BY", Kind: "garrison",
+		Note: "Mechanised brigade nearest the Polish and Lithuanian borders, directly behind the Suwałki gap.",
+		Side: SideAdversary, DepthKm: 25,
+		Box: Box{Name: "grodno", LatMin: 53.62, LonMin: 23.74, LatMax: 53.74, LonMax: 23.94},
+	},
+	{
+		Key: "polatsk", Label: "Polatsk / Navapolatsk", Country: "BY", Kind: "garrison",
+		Note: "Northern Belarusian garrison and refinery hub roughly 90 km from Latvia.",
+		Side: SideAdversary, DepthKm: 90,
+		Box: Box{Name: "polatsk", LatMin: 55.44, LonMin: 28.66, LatMax: 55.56, LonMax: 28.90},
+	},
+	{
+		Key: "smolensk", Label: "Smolensk — 144th Motor Rifle Div.", Country: "RU", Kind: "garrison",
+		Note: "Division-level formation of the Western Military District; the parent of the Yelnya staging area.",
+		Side: SideAdversary, DepthKm: 400,
+		Box: Box{Name: "smolensk", LatMin: 54.72, LonMin: 31.94, LatMax: 54.84, LonMax: 32.18},
+	},
+	{
+		Key: "machulishchy", Label: "Machulishchy air base", Country: "BY", Kind: "airbase",
+		Note: "Air base south of Minsk used for Russian A-50 airborne-early-warning aircraft.",
+		Side: SideAdversary, DepthKm: 190,
+		Box: Box{Name: "machulishchy", LatMin: 53.71, LonMin: 27.44, LatMax: 53.83, LonMax: 27.66},
+	},
+	{
+		Key: "chkalovsk", Label: "Chkalovsk naval air base", Country: "RU-KGD", Kind: "airbase",
+		Note: "Baltic Fleet naval aviation base outside Kaliningrad city.",
+		Side: SideAdversary, DepthKm: 95,
+		Box: Box{Name: "chkalovsk", LatMin: 54.71, LonMin: 20.30, LatMax: 54.83, LonMax: 20.50},
+	},
+
 	// ---- The one friendly-side box worth keeping ----
 	{
 		// Not early warning: this is the corridor NATO would have to hold, so

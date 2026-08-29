@@ -55,8 +55,14 @@ export interface SourceStatus {
   error: string;
 }
 
+// Responses are cached for 5 minutes at the edge. Without a per-build cache
+// key a freshly deployed bundle can be served a response from the previous
+// schema, which renders as missing fields until the cache expires.
+const BUILD = (import.meta as { env?: Record<string, string> }).env?.VITE_BUILD_ID ?? "dev";
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+  const url = path + (path.includes("?") ? "&" : "?") + "v=" + BUILD;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`${path}: ${res.status}`);
   return res.json();
 }
@@ -155,6 +161,7 @@ export interface SarAOI {
   latest: number;
   median: number;
   baseline: number;
+  scene_shifted: boolean;
 }
 
 export interface Layers {

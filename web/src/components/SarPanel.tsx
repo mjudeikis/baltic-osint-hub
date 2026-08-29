@@ -58,9 +58,13 @@ function SarCard({
   const enough = aoi.baseline >= 8;
   const status = !enough
     ? { label: "Baselining", symbol: "○", cssVar: "--text-muted" }
-    : aoi.anomaly
-      ? { label: "Change detected", symbol: "▲", cssVar: "--status-serious" }
-      : { label: "Nominal", symbol: "○", cssVar: "--status-good" };
+    : aoi.scene_shifted
+      ? // Conditions unlike anything in the reference period: no honest
+        // comparison is possible, so say so rather than raise or clear.
+        { label: "Conditions changed", symbol: "◌", cssVar: "--status-warning" }
+      : aoi.anomaly
+        ? { label: "Change detected", symbol: "▲", cssVar: "--status-serious" }
+        : { label: "Nominal", symbol: "○", cssVar: "--status-good" };
 
   return (
     <div className="tile" data-focused={focused || undefined}>
@@ -88,7 +92,13 @@ function SarCard({
             bright pixels · baseline {(aoi.median * 100).toFixed(1)}%
             {enough && aoi.anomaly && aoi.zscore > 0 && ` · ${aoi.zscore.toFixed(1)}σ above`}
           </div>
-          <Sparkline series={aoi.series} anomaly={aoi.anomaly && enough} />
+          <Sparkline series={aoi.series} anomaly={aoi.anomaly && enough && !aoi.scene_shifted} />
+          {aoi.scene_shifted && (
+            <div className="delta" style={{ marginTop: 4 }}>
+              scene-wide backscatter shifted (weather, harvest or sea state) —
+              comparison suppressed
+            </div>
+          )}
           <div className="delta">
             {aoi.series.length} passes · latest{" "}
             {new Date(aoi.series[aoi.series.length - 1].start).toLocaleDateString("en-GB", {

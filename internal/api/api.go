@@ -185,21 +185,22 @@ func (s *Server) handleSea(w http.ResponseWriter, r *http.Request) {
 
 // sarAOI is one monitored area with its measurement series and current verdict.
 type sarAOI struct {
-	Key        string                 `json:"key"`
-	Label      string                 `json:"label"`
-	Country    string                 `json:"country"`
-	Kind       string                 `json:"kind"`
-	Side       string                 `json:"side"`
-	Note       string                 `json:"note"`
-	DepthKm    int                    `json:"depth_km"`
-	Bbox       [4]float64             `json:"bbox"` // lonMin, latMin, lonMax, latMax
-	BrowserURL string                 `json:"browser_url"`
-	Series     []store.SARObservation `json:"series"`
-	Anomaly    bool                   `json:"anomaly"`
-	ZScore     float64                `json:"zscore"`
-	Latest     float64                `json:"latest"`
-	Median     float64                `json:"median"`
-	Baseline   int                    `json:"baseline"`
+	Key          string                 `json:"key"`
+	Label        string                 `json:"label"`
+	Country      string                 `json:"country"`
+	Kind         string                 `json:"kind"`
+	Side         string                 `json:"side"`
+	Note         string                 `json:"note"`
+	DepthKm      int                    `json:"depth_km"`
+	Bbox         [4]float64             `json:"bbox"` // lonMin, latMin, lonMax, latMax
+	BrowserURL   string                 `json:"browser_url"`
+	Series       []store.SARObservation `json:"series"`
+	Anomaly      bool                   `json:"anomaly"`
+	ZScore       float64                `json:"zscore"`
+	Latest       float64                `json:"latest"`
+	Median       float64                `json:"median"`
+	Baseline     int                    `json:"baseline"`
+	SceneShifted bool                   `json:"scene_shifted"`
 }
 
 func (s *Server) handleSAR(w http.ResponseWriter, r *http.Request) {
@@ -216,21 +217,22 @@ func (s *Server) handleSAR(w http.ResponseWriter, r *http.Request) {
 			z = 0 // JSON has no Infinity; the Detected flag carries the verdict
 		}
 		out = append(out, sarAOI{
-			Key:        aoi.Key,
-			Label:      aoi.Label,
-			Country:    aoi.Country,
-			Kind:       aoi.Kind,
-			Side:       aoi.Side,
-			Note:       aoi.Note,
-			DepthKm:    aoi.DepthKm,
-			Bbox:       [4]float64{aoi.Box.LonMin, aoi.Box.LatMin, aoi.Box.LonMax, aoi.Box.LatMax},
-			BrowserURL: aoi.BrowserURL(),
-			Series:     series,
-			Anomaly:    a.Detected,
-			ZScore:     z,
-			Latest:     a.Latest,
-			Median:     a.Median,
-			Baseline:   a.Baseline,
+			Key:          aoi.Key,
+			Label:        aoi.Label,
+			Country:      aoi.Country,
+			Kind:         aoi.Kind,
+			Side:         aoi.Side,
+			Note:         aoi.Note,
+			DepthKm:      aoi.DepthKm,
+			Bbox:         [4]float64{aoi.Box.LonMin, aoi.Box.LatMin, aoi.Box.LonMax, aoi.Box.LatMax},
+			BrowserURL:   aoi.BrowserURL(),
+			Series:       series,
+			Anomaly:      a.Detected,
+			ZScore:       z,
+			Latest:       a.Latest,
+			Median:       a.Median,
+			Baseline:     a.Baseline,
+			SceneShifted: a.SceneShifted,
 		})
 	}
 	s.writeJSON(w, out)

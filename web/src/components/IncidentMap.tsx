@@ -34,6 +34,7 @@ export default function IncidentMap({
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
+  const sitePopup = useRef<maplibregl.Popup | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [visible, setVisible] = useState<Record<OverlayKey, boolean>>({
     jamming: true,
@@ -69,6 +70,8 @@ export default function IncidentMap({
     map.current = m;
     (window as any).__osintMap = m;
     return () => {
+      sitePopup.current?.remove();
+      sitePopup.current = null;
       m.remove();
       map.current = null;
       setLoaded(false);
@@ -264,10 +267,14 @@ export default function IncidentMap({
         [lonMin, latMin],
         [lonMax, latMax],
       ],
-      { padding: 140, maxZoom: 12, duration: 900 },
+      { padding: 140, maxZoom: 12, duration: document.hidden ? 0 : 900 },
     );
     setVisible((v) => ({ ...v, sites: true }));
 
+    // Held in a ref rather than torn down by the effect cleanup: clearing the
+    // focus re-runs this effect, and a cleanup-owned popup would remove itself
+    // the instant it appeared.
+    sitePopup.current?.remove();
     const popup = new maplibregl.Popup({ maxWidth: "320px" })
       .setLngLat([(lonMin + lonMax) / 2, (latMin + latMax) / 2])
       .setHTML(
@@ -279,16 +286,20 @@ export default function IncidentMap({
           (aoi.series.length
             ? `<br/><br/>bright pixels <strong>${(aoi.latest * 100).toFixed(1)}%</strong>` +
               ` (baseline ${(aoi.median * 100).toFixed(1)}%)<br/>` +
-              (aoi.anomaly && aoi.baseline >= 8 ? "▲ change detected" : "○ nominal")
+              (aoi.baseline < 8
+                ? "○ baselining"
+                : aoi.scene_shifted
+                  ? "◌ conditions changed — comparison suppressed"
+                  : aoi.anomaly
+                    ? "▲ change detected"
+                    : "○ nominal")
             : "<br/><br/>no radar measurements yet") +
           `<br/><a href="${esc(aoi.browser_url)}" target="_blank" rel="noopener noreferrer">inspect imagery ↗</a>`,
       )
       .addTo(m);
 
+    sitePopup.current = popup;
     onFocusHandled?.();
-    return () => {
-      popup.remove();
-    };
   }, [focusedSite, loaded, layers, onFocusHandled]);
 
   const counts: Record<OverlayKey, number> = {

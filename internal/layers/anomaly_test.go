@@ -103,3 +103,58 @@ func TestDetectAnomalySortsByTime(t *testing.T) {
 		t.Errorf("unsorted input mishandled: %+v", a)
 	}
 }
+
+// seriesWithDB builds observations carrying both bright fraction and scene
+// mean backscatter.
+func seriesWithDB(pairs [][2]float64) []store.SARObservation {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	out := make([]store.SARObservation, len(pairs))
+	for i, p := range pairs {
+		out[i] = store.SARObservation{
+			Start:          base.AddDate(0, 0, i*6),
+			End:            base.AddDate(0, 0, i*6+6),
+			BrightFraction: p[0],
+			MeanDB:         p[1],
+			SampleCount:    340000,
+		}
+	}
+	return out
+}
+
+// The Pskov case: rain, harvest or sea state brightens the whole scene, so the
+// bright-pixel fraction rises with it. That is not equipment arriving, and
+// flagging it would fire every site at once.
+func TestSceneWideBrighteningIsNotAnomaly(t *testing.T) {
+	s := seriesWithDB([][2]float64{
+		{0.068, -9.7}, {0.074, -9.6}, {0.067, -9.6}, {0.095, -9.1},
+		{0.064, -9.9}, {0.090, -9.0}, {0.078, -9.4}, {0.070, -9.8},
+		{0.072, -9.5}, {0.242, -6.2}, // whole scene jumped 3.4 dB
+	})
+	a := DetectAnomaly(s)
+	if !a.SceneAdjusted {
+		t.Fatal("expected the verdict to be scene-adjusted")
+	}
+	if !a.SceneShifted {
+		t.Error("expected the pass to be marked as taken under shifted conditions")
+	}
+	if a.Detected {
+		t.Errorf("scene-wide brightening flagged as anomaly: z=%.1f", a.ZScore)
+	}
+}
+
+// Equipment arriving is localised: bright pixels climb while the scene mean
+// stays put. That must still flag.
+func TestLocalisedBrighteningStillFlags(t *testing.T) {
+	s := seriesWithDB([][2]float64{
+		{0.068, -9.7}, {0.074, -9.6}, {0.067, -9.6}, {0.071, -9.5},
+		{0.064, -9.9}, {0.070, -9.6}, {0.078, -9.4}, {0.070, -9.8},
+		{0.072, -9.5}, {0.230, -9.6}, // scene unchanged, bright pixels tripled
+	})
+	a := DetectAnomaly(s)
+	if a.SceneShifted {
+		t.Error("stable scene wrongly treated as shifted")
+	}
+	if !a.Detected {
+		t.Errorf("localised brightening missed: z=%.1f adjusted=%v", a.ZScore, a.SceneAdjusted)
+	}
+}
