@@ -421,3 +421,88 @@ func (s *Store) CertPLSince(ctx context.Context, since time.Time) ([]CertPLDay, 
 	}
 	return out, rows.Err()
 }
+
+// VesselType is an AIS ship-and-cargo type for one MMSI.
+type VesselType struct {
+	MMSI     int64  `json:"mmsi"`
+	ShipType int    `json:"ship_type"`
+	Name     string `json:"name,omitempty"`
+	IMO      string `json:"imo,omitempty"`
+	CallSign string `json:"call_sign,omitempty"`
+}
+
+// IsServiceVessel reports whether an AIS ship type belongs to a craft whose
+// normal work involves holding station, and which therefore must not raise a
+// loitering detection.
+//
+// AIS types 50-59 are the service and special-craft block: pilot boats, search
+// and rescue, tugs, port tenders, anti-pollution, law enforcement, medical.
+// Deliberately NOT excluded:
+//
+//   - 30 fishing — trawling over a cable route is itself a known tactic, so a
+//     fishing vessel loitering on a cable is a signal, not noise;
+//   - 35 military — obviously of interest;
+//   - 0 / unknown — a vessel broadcasting no type is not a cleared vessel, and
+//     suppressing those would let anyone opt out of the detector by omission.
+func IsServiceVessel(shipType int) bool {
+	return shipType >= 50 && shipType <= 59
+}
+
+// UpsertVesselTypes records ship types, newest write winning.
+func (s *Store) UpsertVesselTypes(ctx context.Context, types []VesselType) (int, error) {
+	if len(types) == 0 {
+		return 0, nil
+	}
+	batch := &pgx.Batch{}
+	for _, v := range types {
+		batch.Queue(
+			`INSERT INTO vessel_types (mmsi, ship_type, name, imo, call_sign, updated_at)
+			 VALUES ($1,$2,$3,$4,$5, now())
+			 ON CONFLICT (mmsi) DO UPDATE SET
+			   ship_type=EXCLUDED.ship_type, name=EXCLUDED.name,
+			   imo=EXCLUDED.imo, call_sign=EXCLUDED.call_sign, updated_at=now()`,
+			v.MMSI, v.ShipType, v.Name, v.IMO, v.CallSign)
+	}
+	br := s.pool.SendBatch(ctx, batch)
+	defer br.Close()
+	for range types {
+		if _, err := br.Exec(); err != nil {
+			return 0, err
+		}
+	}
+	return len(types), nil
+}
+
+// VesselTypeOf returns the stored ship type, or false when the vessel is
+// unknown to us. Unknown must never be treated as "service" — see
+// IsServiceVessel.
+func (s *Store) VesselTypeOf(ctx context.Context, mmsi int64) (int, bool) {
+	var t int
+	err := s.pool.QueryRow(ctx, `SELECT ship_type FROM vessel_types WHERE mmsi=$1`, mmsi).Scan(&t)
+	if err != nil {
+		return 0, false
+	}
+	return t, true
+}
+
+// LookupVesselTypes returns known ship types for a batch of MMSIs.
+func (s *Store) LookupVesselTypes(ctx context.Context, mmsis []int64) (map[int64]VesselType, error) {
+	out := map[int64]VesselType{}
+	if len(mmsis) == 0 {
+		return out, nil
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT mmsi, ship_type, name, imo, call_sign FROM vessel_types WHERE mmsi = ANY($1)`, mmsis)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v VesselType
+		if err := rows.Scan(&v.MMSI, &v.ShipType, &v.Name, &v.IMO, &v.CallSign); err != nil {
+			return nil, err
+		}
+		out[v.MMSI] = v
+	}
+	return out, rows.Err()
+}

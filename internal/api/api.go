@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -299,6 +300,26 @@ func (s *Server) handleAir(w http.ResponseWriter, r *http.Request) {
 type seaEventOut struct {
 	store.SeaEvent
 	Sanctioned *store.SanctionedVessel `json:"sanctioned,omitempty"`
+	// ShipType is the AIS ship-and-cargo code where known, so a reader can see
+	// whether a stopped vessel was a tanker or a tug.
+	ShipType *int `json:"ship_type,omitempty"`
+	// Notable marks the events worth showing by default: a listed vessel, or a
+	// transponder going dark. Everything else is ordinary maritime behaviour
+	// and is kept as baseline rather than surfaced as a finding.
+	Notable bool `json:"notable"`
+}
+
+// notable decides what the dashboard leads with.
+//
+// A week of live data produced 120 sea events, of which 4 involved a
+// sanctioned vessel. Presenting all 120 identically buried those 4. Loitering
+// on its own is not evidence of anything — ships stop constantly, for berths,
+// bunkering, crew transfers and weather — so it stays recorded as the baseline
+// that makes an anomaly meaningful, but it does not claim the reader's
+// attention unless something else is true of it.
+func notable(e store.SeaEvent, listed bool) bool {
+	// Going dark inside a cable corridor is not routine, whoever does it.
+	return listed || e.Event == "ais-gap"
 }
 
 func (s *Server) handleSea(w http.ResponseWriter, r *http.Request) {
@@ -319,14 +340,38 @@ func (s *Server) handleSea(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("sanctions lookup", "err", err)
 		listed = nil
 	}
+	types, err := s.db.LookupVesselTypes(r.Context(), mmsis)
+	if err != nil {
+		s.log.Error("vessel type lookup", "err", err)
+		types = nil
+	}
+
+	notableOnly := r.URL.Query().Get("notable") == "1"
 	out := make([]seaEventOut, 0, len(events))
 	for _, e := range events {
 		o := seaEventOut{SeaEvent: e}
-		if v, ok := listed[e.MMSI]; ok {
+		v, isListed := listed[e.MMSI]
+		if isListed {
 			o.Sanctioned = &v
+		}
+		if t, ok := types[e.MMSI]; ok {
+			st := t.ShipType
+			o.ShipType = &st
+		}
+		o.Notable = notable(e, isListed)
+		if notableOnly && !o.Notable {
+			continue
 		}
 		out = append(out, o)
 	}
+	// Notable first, so the four that matter are not buried behind ninety-odd
+	// ordinary stops; within that, most recent first as before.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Notable != out[j].Notable {
+			return out[i].Notable
+		}
+		return out[i].DetectedAt.After(out[j].DetectedAt)
+	})
 	s.writeJSON(w, out)
 }
 

@@ -160,6 +160,16 @@ export interface AirSighting {
   reason: string;
 }
 
+export interface SanctionedVessel {
+  mmsi: number;
+  imo?: string;
+  name: string;
+  risk?: string;
+  flag?: string;
+  countries?: string;
+  url?: string;
+}
+
 export interface SeaEvent {
   detected_at: string;
   mmsi: number;
@@ -170,6 +180,13 @@ export interface SeaEvent {
   sog?: number;
   event: string;
   started_at?: string;
+  // Present when the vessel is on the OpenSanctions maritime watchlist.
+  sanctioned?: SanctionedVessel;
+  // AIS ship-and-cargo type where known (70s cargo, 80s tanker).
+  ship_type?: number;
+  // A listed vessel, or a transponder going dark. Plain loitering is ordinary
+  // maritime behaviour and is kept as baseline rather than shown as a finding.
+  notable: boolean;
 }
 
 export interface SarObservation {

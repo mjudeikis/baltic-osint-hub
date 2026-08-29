@@ -244,25 +244,41 @@ export default function IncidentMap({
       );
     });
 
+    // Notable events (a listed vessel, or a transponder going dark) are drawn
+    // larger and in the status colour; ordinary stops stay small and muted so
+    // they read as background traffic rather than as findings.
     setGeoJSON(m, "sea", pointGeoJSON(layers.sea, (s) => ({
       lon: s.lon, lat: s.lat,
       name: s.ship_name || String(s.mmsi), event: s.event,
       corridor: s.corridor, sog: s.sog, when: s.detected_at,
+      notable: s.notable ? 1 : 0,
+      sanctioned: s.sanctioned?.name ?? "",
+      risk: s.sanctioned?.risk ?? "",
+      flag: s.sanctioned?.flag ?? "",
+      url: s.sanctioned?.url ?? "",
     })), () => {
       m.addLayer({
         id: "sea",
         type: "circle",
         source: "sea",
         paint: {
-          "circle-color": cssColor("--series-6"),
-          "circle-radius": 7,
+          "circle-color": [
+            "case", ["==", ["get", "notable"], 1],
+            cssColor("--status-warning"), cssColor("--series-6"),
+          ],
+          "circle-radius": ["case", ["==", ["get", "notable"], 1], 8, 4],
+          "circle-opacity": ["case", ["==", ["get", "notable"], 1], 1, 0.45],
           "circle-stroke-color": cssColor("--surface-1"),
           "circle-stroke-width": 2,
         },
       });
-      bindPopup(m, "sea", (p) =>
-        `<strong>⚓ ${esc(p.name)}</strong><br/>${esc(p.event)} · ${esc(p.corridor)} · ${p.sog ?? "?"} kn<br/>${new Date(p.when).toLocaleString("en-GB")}`,
-      );
+      bindPopup(m, "sea", (p) => {
+        const listed = p.sanctioned
+          ? `<br/><strong>⚠ listed:</strong> ${esc(p.sanctioned)}${p.risk ? ` (${esc(p.risk)})` : ""}${p.flag ? ` · flag ${esc(p.flag)}` : ""}` +
+            (p.url ? `<br/><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">OpenSanctions entry</a>` : "")
+          : "";
+        return `<strong>⚓ ${esc(p.name)}</strong><br/>${esc(p.event)} · ${esc(p.corridor)} · ${p.sog ?? "?"} kn<br/>${new Date(p.when).toLocaleString("en-GB")}${listed}`;
+      });
     });
 
     // SAR monitored sites: outlined always, filled when the latest pass
@@ -369,7 +385,10 @@ export default function IncidentMap({
     jamming: layers?.gpsjam.length ?? 0,
     thermal: layers?.firms.length ?? 0,
     air: layers?.air.length ?? 0,
-    sea: layers?.sea.length ?? 0,
+    // Sea counts only the notable events. The rest is ordinary harbour
+    // traffic kept as baseline; putting 120 in the toggle implied 120 things
+    // worth looking at when four were.
+    sea: layers?.sea.filter((s) => s.notable).length ?? 0,
     sites: layers?.sar.length ?? 0,
     cables: 0,
     territory: 0,
@@ -404,7 +423,8 @@ export default function IncidentMap({
         ))}
         <span style={{ color: "var(--text-muted)" }}>
           incident severity · jamming shading = share of affected aircraft (previous day) ·
-          thermal/air/sea are machine detections, not verified incidents
+          thermal/air/sea are machine detections, not verified incidents · sea shows
+          listed vessels and AIS gaps; routine stops are dimmed
         </span>
       </div>
     </>

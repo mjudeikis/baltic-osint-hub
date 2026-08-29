@@ -222,6 +222,41 @@ That happens to cover Balticconnector and the EstLink cables, where the
 highest-profile incidents occurred. But **an empty NordBalt corridor means no
 data, not a quiet corridor**, and aisstream remains the only source there.
 
+### What counts as a sea detection
+
+The first week of live data produced **120 sea events, of which 4 involved a
+sanctioned vessel**. That is not a detector working — it is a description of a
+working seaway, and it buried the four that mattered. Three rules now separate
+signal from traffic:
+
+**Vessels that are stationary by declaration are not loitering.** AIS
+navigational status 1 (at anchor), 5 (moored) and 6 (aground) are excluded.
+Anchor was the significant omission: the corridor boxes span 137,000 km² and
+include the Helsinki and Tallinn anchorages, where ships wait for a berth
+entirely legitimately.
+
+**Vessels whose job is holding station are excluded from loitering.** AIS ship
+types 50–59 — pilot boats, search and rescue, tugs, port tenders, law
+enforcement. Measured against the Finnish registry, these are **229 of 1,002
+vessels (23%)**. Deliberately *not* excluded: fishing vessels, because trawling
+a cable route is itself a known tactic; military; and vessels broadcasting no
+type at all, since not-yet-classified is not the same as cleared. An AIS gap on
+a pilot boat is still reported — going dark is nobody's job.
+
+**Plain loitering is baseline, not a finding.** Ships stop constantly. Only two
+things promote a sea event to the foreground: the vessel is on the sanctions
+watchlist, or its transponder went dark. Everything else is still recorded —
+it is the baseline that makes an anomaly meaningful — but it is dimmed on the
+map and excluded from the layer count.
+
+Applied to that same week: 16 service-craft detections would never have fired,
+26 events surface (4 listed, 23 AIS gaps), and 78 remain as dimmed background.
+
+One thing measured and discarded: **filtering by distance to a real cable does
+not work.** The Baltic carries 49 cable routes, so 88% of events already fall
+within 10 km of one and 64% within 5 km. Proximity is not selective here, and
+the geometry would have been wasted effort.
+
 ### Naming the vessel
 
 Sea events are joined to the OpenSanctions maritime dataset by MMSI, so the

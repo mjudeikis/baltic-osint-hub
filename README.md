@@ -50,7 +50,11 @@ RSS + GDELT + Telegram + Reddit + Bluesky ──► collector (CronJob, hourly) 
     (anonymous works; an OpenSky OAuth2 client raises the rate limits);
   - **Sea activity** — aisstream.io live AIS in the Baltic cable corridors;
     flags loitering (<1 kn for 30+ min) and AIS gaps (1h+ dark inside a
-    corridor). Runs as a persistent stream inside the server (needs a free
+    corridor). Vessels reporting themselves at anchor, moored or aground are
+    excluded, as are service craft whose job is holding station (pilot, SAR,
+    tug, port tender — 23% of vessels in Finnish waters). Only a listed vessel
+    or an AIS gap is surfaced by default; routine stops are kept as baseline
+    but dimmed. Runs as a persistent stream inside the server (needs a free
     `AISSTREAM_API_KEY`);
   - **AIS archive** — Finnish Digitraffic positions inside the cable corridors,
     polled every 15 min (CC BY 4.0, no key). aisstream is realtime-only, so

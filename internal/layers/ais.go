@@ -13,8 +13,19 @@ import (
 
 // AISWatch consumes the aisstream.io websocket and records suspicious vessel
 // behaviour inside the Baltic cable corridors:
-//   - loitering: speed < 1 kn for 30+ minutes mid-corridor (not moored)
+//   - loitering: speed < 1 kn for 30+ minutes mid-corridor
 //   - ais-gap: transponder silent for 1h+ while inside a corridor
+//
+// Two exclusions keep this from describing a working harbour rather than
+// detecting anything. Both were added after a week of live data produced 97
+// loitering events of which only 3 involved a sanctioned vessel:
+//
+//   - Navigational status. A vessel that reports itself moored or AT ANCHOR is
+//     parked, not loitering. Anchor was the bigger miss: our corridor boxes
+//     span 137,000 km² and swallow the Helsinki and Tallinn anchorages, where
+//     ships wait for a berth entirely legitimately.
+//   - Ship type. Pilot boats, SAR craft, tugs and port tenders hold station as
+//     their actual job. In Finnish waters they are 23% of all vessels.
 //
 // It runs as a persistent goroutine in the server process and reconnects
 // with backoff.
@@ -24,6 +35,10 @@ type AISWatch struct {
 	Log    *slog.Logger
 
 	vessels map[int64]*vesselState
+	// shipTypes caches the type lookup so the hot path does not hit the
+	// database per position report. Missing entries are re-checked, because a
+	// vessel we have not yet classified must never be silently filtered.
+	shipTypes map[int64]int
 }
 
 type vesselState struct {
@@ -44,6 +59,7 @@ const (
 
 func (w *AISWatch) Run(ctx context.Context) {
 	w.vessels = map[int64]*vesselState{}
+	w.shipTypes = map[int64]int{}
 	backoff := time.Second
 	for ctx.Err() == nil {
 		err := w.consume(ctx)
@@ -149,8 +165,9 @@ func (w *AISWatch) handlePosition(ctx context.Context, msg *aisMessage) {
 	st.corridor = corridor
 	st.lastSeen = now
 
-	// Moored (status 5) vessels are in port areas overlapping a corridor box.
-	slow := pos.Sog < loiterSpeedKn && pos.NavigationalStatus != 5
+	// A vessel reporting itself moored, at anchor or aground is stationary by
+	// declaration, not by behaviour worth flagging.
+	slow := pos.Sog < loiterSpeedKn && !stationaryByStatus(pos.NavigationalStatus)
 	if !slow {
 		st.slowSince = nil
 		return
@@ -161,6 +178,13 @@ func (w *AISWatch) handlePosition(ctx context.Context, msg *aisMessage) {
 		return
 	}
 	if now.Sub(*st.slowSince) >= loiterAfter && now.Sub(st.reportedAt) > seaDedupeWindow {
+		// Service craft hold station for a living; only their loitering is
+		// suppressed. An AIS gap on a pilot boat would still be reported,
+		// because going dark is not part of anyone's job.
+		if w.isServiceVessel(ctx, msg.MetaData.MMSI) {
+			st.reportedAt = now // don't re-check this vessel every position
+			return
+		}
 		w.record(ctx, msg, corridor, "loitering", *st.slowSince)
 		st.reportedAt = now
 	}
@@ -189,11 +213,33 @@ func (w *AISWatch) record(ctx context.Context, msg *aisMessage, corridor, event 
 	}
 }
 
+// stationaryByStatus reports whether an AIS navigational status already
+// explains the vessel not moving: 1 at anchor, 5 moored, 6 aground.
+func stationaryByStatus(navStatus int) bool {
+	return navStatus == 1 || navStatus == 5 || navStatus == 6
+}
+
+// isServiceVessel looks up the AIS ship type, caching per process. An unknown
+// vessel returns false — not-yet-classified is not the same as cleared, and
+// filtering on absence would let any vessel opt out by omission.
+func (w *AISWatch) isServiceVessel(ctx context.Context, mmsi int64) bool {
+	if t, ok := w.shipTypes[mmsi]; ok {
+		return store.IsServiceVessel(t)
+	}
+	t, ok := w.DB.VesselTypeOf(ctx, mmsi)
+	if !ok {
+		return false
+	}
+	w.shipTypes[mmsi] = t
+	return store.IsServiceVessel(t)
+}
+
 func (w *AISWatch) cleanup() {
 	cutoff := time.Now().Add(-stateTTL)
 	for mmsi, st := range w.vessels {
 		if st.lastSeen.Before(cutoff) {
 			delete(w.vessels, mmsi)
+			delete(w.shipTypes, mmsi)
 		}
 	}
 }
