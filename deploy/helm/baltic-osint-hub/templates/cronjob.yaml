@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "osint.name" . }}-collector
+  labels:
+    {{- include "osint.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.collector.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 1500
+      template:
+        metadata:
+          labels:
+            {{- include "osint.labels" . | nindent 12 }}
+            app.kubernetes.io/component: collector
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: collector
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/usr/local/bin/collector"]
+              env:
+                {{- include "osint.dbEnv" . | nindent 16 }}
+                - name: ENRICH_MODEL
+                  value: {{ .Values.collector.enrichModel | quote }}
+                - name: MAX_ENRICH_PER_RUN
+                  value: {{ .Values.collector.maxEnrichPerRun | quote }}
+                - name: ANTHROPIC_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.existingSecret }}
+                      key: ANTHROPIC_API_KEY
+                - name: ACLED_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.existingSecret }}
+                      key: ACLED_API_KEY
+                      optional: true
+              resources:
+                {{- toYaml .Values.collector.resources | nindent 16 }}

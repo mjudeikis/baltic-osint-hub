@@ -1,0 +1,45 @@
+image:
+  repository: ghcr.io/mjudeikis/baltic-osint-hub
+  tag: latest
+  pullPolicy: Always
+
+server:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+collector:
+  # Every 30 minutes; per-source intervals are enforced internally.
+  schedule: "*/30 * * * *"
+  enrichModel: claude-haiku-4-5
+  maxEnrichPerRun: "300"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+# Secret with keys: ANTHROPIC_API_KEY (required for classification),
+# ACLED_API_KEY (optional), and DATABASE_URL when postgres.enabled=false.
+existingSecret: baltic-osint-hub
+
+# Self-contained Postgres. Disable and set DATABASE_URL in the secret to use
+# an external database instead.
+postgres:
+  enabled: true
+  image: postgres:17-alpine
+  storage: 5Gi
+  storageClassName: ""
+  user: osint
+  password: osint # local cluster default; override for anything shared
+  database: osint
+
+service:
+  # ClusterIP; point the Cloudflare tunnel at
+  # http://<release>-baltic-osint-hub.<namespace>.svc:8080
+  port: 8080

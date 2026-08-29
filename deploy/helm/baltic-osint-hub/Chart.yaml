@@ -1,0 +1,6 @@
+apiVersion: v2
+name: baltic-osint-hub
+description: Public OSINT dashboard tracking hybrid threats in the Baltics and Poland
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,298 @@
+/* Palette per the validated reference instance (dataviz skill). Light is the
+   base; dark redefines the same roles under both the OS preference and an
+   explicit data-theme stamp. */
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+
+  /* Fixed categorical slot order — never cycled. */
+  --series-1: #2a78d6; /* blue    → cyber */
+  --series-2: #eb6834; /* orange  → sabotage */
+  --series-3: #1baf7a; /* aqua    → gps-jamming */
+  --series-4: #eda100; /* yellow  → airspace-border */
+  --series-5: #e87ba4; /* magenta → disinformation */
+  --series-6: #008300; /* green   → military */
+  --series-7: #4a3aa7; /* violet  → espionage */
+  --series-8: #e34948; /* red     → undersea-infrastructure */
+  --series-other: #898781;
+
+  /* Status palette (fixed, never themed) — always paired with icon + label. */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  /* Sequential blue ramp steps for severity 1–5 (ordinal use: start at 250). */
+  --seq-1: #86b6ef;
+  --seq-2: #5598e7;
+  --seq-3: #2a78d6;
+  --seq-4: #1c5cab;
+  --seq-5: #104281;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+    --seq-1: #6da7ec;
+    --seq-2: #3987e5;
+    --seq-3: #256abf;
+    --seq-4: #1c5cab;
+    --seq-5: #184f95;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface-1: #1a1a19;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --seq-1: #6da7ec;
+  --seq-2: #3987e5;
+  --seq-3: #256abf;
+  --seq-4: #1c5cab;
+  --seq-5: #184f95;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--series-1);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px 48px;
+}
+
+header.site {
+  padding: 24px 0 8px;
+}
+header.site h1 {
+  font-size: 22px;
+  margin: 0;
+}
+header.site p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.card h2 {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.filters select,
+.filters button {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border: 1px solid var(--baseline);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.filters button[aria-pressed="true"] {
+  border-color: var(--series-1);
+  color: var(--series-1);
+  font-weight: 600;
+}
+
+/* Threat board */
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.tile {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+.tile .country {
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.tile .count {
+  font-size: 30px;
+  font-weight: 650;
+  margin: 4px 0 0;
+}
+.tile .delta {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+.tile ul {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+.tile li {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px 0;
+}
+.level {
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.level .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Feed */
+.feed-item {
+  border-top: 1px solid var(--grid);
+  padding: 10px 0;
+}
+.feed-item:first-of-type {
+  border-top: none;
+}
+.feed-item .head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.feed-item time,
+.feed-item .src {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.feed-item .summary {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+}
+.chip {
+  font-size: 11.5px;
+  border: 1px solid var(--baseline);
+  color: var(--text-secondary);
+  border-radius: 99px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.chip.cat {
+  border-left: 5px solid var(--baseline);
+}
+.sev {
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: #fff;
+}
+
+.map-wrap {
+  height: 420px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+footer.site {
+  margin-top: 24px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+footer.site table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+footer.site th,
+footer.site td {
+  text-align: left;
+  padding: 3px 8px 3px 0;
+  border-top: 1px solid var(--grid);
+  font-variant-numeric: tabular-nums;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.legend .key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.legend .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
