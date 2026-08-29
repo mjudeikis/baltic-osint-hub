@@ -48,6 +48,10 @@ var institutional = map[string]bool{
 	"lv-mod-lv": true, "ee-gov": true, "ee-mfa": true,
 	"frontex": true, "europol": true, "ec-press": true, "euvsdisinfo": true,
 	"elering": true,
+	// Nordic public broadcasters, on the same footing as LRT/ERR/LSM.
+	"yle-news": true, "svt-nyheter": true,
+	// EDMO regional fact-checking hubs (Univ. of Tartu and partners).
+	"becid": true, "fact-hub": true,
 }
 
 // Credibility classifies a source name as recorded on raw_items.

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mjudeikis/baltic-osint-hub/internal/cluster"
 	"github.com/mjudeikis/baltic-osint-hub/internal/config"
 	"github.com/mjudeikis/baltic-osint-hub/internal/enrich"
 	"github.com/mjudeikis/baltic-osint-hub/internal/layers"
@@ -48,6 +49,28 @@ func main() {
 		return
 	}
 	classify(ctx, log, db, enrich.NewClassifier(cfg.OpenAIAPIKey, cfg.EnrichModel, cfg.OpenAIBaseURL), cfg.MaxEnrichPerRun)
+
+	// Clustering runs after classification so items enriched in this same run
+	// are grouped immediately rather than a cycle late.
+	clusterIncidents(ctx, log, db, enrich.NewEmbedder(cfg.OpenAIAPIKey, cfg.OpenAIBaseURL),
+		cfg.MaxClusterPerRun, cfg.ClusterThreshold)
+}
+
+// clusterIncidents groups incident reports of the same event. It is the reason
+// the dashboard's counts mean anything: without it, one sabotage story carried
+// by six outlets contributed six adverse items to the posture reading.
+func clusterIncidents(ctx context.Context, log *slog.Logger, db *store.Store, emb *enrich.Embedder, max int, threshold float64) {
+	started := time.Now()
+	res, err := cluster.Run(ctx, db, emb, max, threshold, log)
+	db.RecordSourceRun(ctx, "cluster", started, res.Considered, res.Merged, err)
+	if err != nil {
+		log.Error("clustering", "err", err)
+		return
+	}
+	if res.Considered > 0 {
+		log.Info("clustering done", "considered", res.Considered,
+			"new_events", res.NewEvents, "merged", res.Merged)
+	}
 }
 
 func fetchAll(ctx context.Context, log *slog.Logger, db *store.Store) {

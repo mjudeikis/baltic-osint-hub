@@ -31,6 +31,14 @@ RSS + GDELT + Telegram + Reddit + Bluesky ──► collector (CronJob, hourly) 
   - **Bluesky** keyword searches via the open AppView API.
   It dedupes by URL and normalized-title hash, keyword-prefilters (EN/LT/LV/ET/
   PL/RU), then batches new items through the OpenAI API for classification.
+- **Event clustering** (`internal/cluster`) then groups reports of the *same*
+  incident. The title hash only catches verbatim syndication; clustering
+  embeds each item's English summary and merges reports within ±72 hours that
+  share a category and a country. **Every count on the dashboard is a count of
+  events, not articles** — without this, one story carried by six outlets moved
+  the posture reading six times. Corroboration falls out of it: an event's
+  confidence is set from how many *independent* outlets carried it, with
+  state-controlled sources counted as evidence but never as corroboration.
 - **Signal layers** are machine measurements shown as map overlays, separate
   from the classified news feed:
   - **GPS jamming** — gpsjam.org daily H3 cells (share of aircraft reporting
@@ -48,8 +56,11 @@ RSS + GDELT + Telegram + Reddit + Bluesky ──► collector (CronJob, hourly) 
     (Kaliningrad garrisons, Belarusian air bases and training grounds, rail
     and border chokepoints; see `internal/layers/aoi.go`). Runs at most daily.
 - **Server** (`cmd/server`) exposes `/api/incidents`, `/api/stats/timeline`,
-  `/api/stats/summary`, `/api/sources`, `/api/meta`, `/api/layers/*` and serves
-  the built frontend. Responses carry `Cache-Control: max-age=300` for CDN caching.
+  `/api/stats/summary`, `/api/stats/posture`, `/api/sources`, `/api/meta`,
+  `/api/layers/*`, plus `/api/incidents.csv` and `/api/incidents.geojson`, and
+  serves the built frontend. Responses carry `Cache-Control: max-age=60` and
+  `Access-Control-Allow-Origin: *` — the API is read-only and public, so it is
+  usable from anyone else's page.
 - **Frontend** (`web/`) — React + Recharts + MapLibre: per-country threat board,
   stacked daily trend, situation map with togglable signal layers, satellite
   change-detection panel, filterable feed.
@@ -151,6 +162,26 @@ variables take precedence); `.env` is git- and docker-ignored.
 
 For frontend iteration run `npm run dev` in `web/` (proxies /api to :8080).
 
+### Tests
+
+`go test ./...` runs everything that needs no credentials. Two suites are
+opt-in because they need a real database or a real API key:
+
+```sh
+# SQL against a THROWAWAY database — these TRUNCATE, so never point them at a
+# database you care about, least of all production.
+createdb -h localhost -p 5433 -U osint osint_test
+TEST_DATABASE_URL=postgres://osint:osint@localhost:5433/osint_test go test ./...
+
+# Clustering calibration and the end-to-end pass (a fraction of a cent).
+OPENAI_API_KEY=sk-... go test ./internal/cluster/ -run Calibration -v
+```
+
+The calibration test is the one that fixes `CLUSTER_THRESHOLD` — re-run it
+after changing the embedding model, the dimension count, or the threshold.
+It exists because the threshold was originally set by reasoning to a value
+that, when finally measured, merged nothing at all.
+
 ## Configuration (env)
 
 | Variable | Default | Purpose |
@@ -160,6 +191,8 @@ For frontend iteration run `npm run dev` in `web/` (proxies /api to :8080).
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | override for compatible gateways |
 | `ENRICH_MODEL` | `gpt-5-mini` | classification model |
 | `MAX_ENRICH_PER_RUN` | `300` | cost guard per collector run |
+| `MAX_CLUSTER_PER_RUN` | `1000` | incidents embedded and clustered per run |
+| `CLUSTER_THRESHOLD` | `0.70` | cosine similarity at which two reports are one event; higher merges less |
 | `ACLED_EMAIL` / `ACLED_PASSWORD` | — | myACLED credentials ([register free](https://acleddata.com/user/register)); fetcher lands in phase 2 |
 | `FIRMS_MAP_KEY` | — | NASA FIRMS thermal layer ([free key](https://firms.modaps.eosdis.nasa.gov/api/map_key/)) |
 | `OPENSKY_CLIENT_ID` / `OPENSKY_CLIENT_SECRET` | — | OpenSky OAuth2; anonymous fallback |

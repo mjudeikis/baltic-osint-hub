@@ -25,6 +25,15 @@ func TestPassesPrefilter(t *testing.T) {
 		{"tg:belzhd_live", "Эшелон с военной техникой прошёл через Оршу", true},
 		{"tg:MotolkoHelp", "Колонна танков замечена под Гродно", true},
 		{"tg:MotolkoHelp", "Курс доллара снова вырос", false},
+		// Nordic press. These carry the first report of most Baltic Sea cable
+		// incidents, and before Swedish and Finnish terms were added every one
+		// of them failed the region test and was dropped silently.
+		{"svt-nyheter", "Misstänkt sabotage mot kabel i Östersjön", true},
+		{"svt-nyheter", "Ryska fartyg observerade nära Gotland", true},
+		{"svt-nyheter", "Melodifestivalen lockade rekordpublik", false},
+		{"yle-news", "Undersea cable between Finland and Estonia damaged", true},
+		{"yle-news", "Kaapeli katkesi Suomen ja Viron välillä", true},
+		{"yle-news", "Helsinki cafe wins pastry award", false},
 	}
 	for _, c := range cases {
 		if got := PassesPrefilter(c.source, c.title, ""); got != c.want {

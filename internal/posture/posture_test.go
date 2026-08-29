@@ -131,3 +131,77 @@ func TestHistoryTooShortSaysSo(t *testing.T) {
 }
 
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
+
+// The published rules are what a reader checks the reading against, so they
+// must not drift from what Evaluate actually does. Each case constructs the
+// minimal Counts satisfying one rule and asserts the stated level comes back.
+func TestRulesMatchEvaluate(t *testing.T) {
+	cases := []struct {
+		condition string
+		counts    Counts
+		want      Level
+	}{
+		{"any adverse event at severity 5",
+			Counts{Negative: 1, NegativeBySeverity: sev(0, 0, 0, 0, 1)}, Severe},
+		{"any adverse event at severity 4",
+			Counts{Negative: 1, NegativeBySeverity: sev(0, 0, 0, 1)}, High},
+		{"3 or more adverse events at severity 3",
+			Counts{Negative: 3, NegativeBySeverity: sev(0, 0, 3)}, Elevated},
+		{"any adverse event at severity 3",
+			Counts{Negative: 1, NegativeBySeverity: sev(0, 0, 1)}, Watchful},
+		{"5 or more adverse events at any severity",
+			Counts{Negative: 5, NegativeBySeverity: sev(5)}, Watchful},
+		{"at least one adverse event",
+			Counts{Negative: 1, NegativeBySeverity: sev(1)}, Watchful},
+		{"no adverse events", Counts{Positive: 4, Neutral: 9}, Calm},
+	}
+	for _, tc := range cases {
+		t.Run(tc.condition, func(t *testing.T) {
+			if got := Evaluate(tc.counts); got.Level != tc.want {
+				t.Errorf("Evaluate = %s, but Rules() promises %s for %q",
+					got.LevelName, tc.want, tc.condition)
+			}
+		})
+	}
+
+	// Every level the ladder can produce must appear in the published rules,
+	// or a reader could see a level with no documented cause.
+	published := map[string]bool{}
+	for _, r := range Rules() {
+		published[r.LevelName] = true
+	}
+	for l := Calm; l <= Severe; l++ {
+		if !published[l.String()] {
+			t.Errorf("level %s is reachable but not published in Rules()", l)
+		}
+	}
+}
+
+func TestTrendNamesImprovement(t *testing.T) {
+	// The point of a de-escalating state: a week that is clearly better than
+	// the norm has to be legible as improvement, not merely as a lower number.
+	improving := Evaluate(Counts{Negative: 2, NegativeBySeverity: sev(0, 2)}).
+		WithHistory([]int{6, 8, 7, 9, 6, 7})
+	if improving.Trend != TrendDeEscalating {
+		t.Errorf("trend = %q, want %q", improving.Trend, TrendDeEscalating)
+	}
+
+	worsening := Evaluate(Counts{Negative: 12, NegativeBySeverity: sev(0, 0, 12)}).
+		WithHistory([]int{2, 1, 3, 2, 2, 1})
+	if worsening.Trend != TrendEscalating {
+		t.Errorf("trend = %q, want %q", worsening.Trend, TrendEscalating)
+	}
+
+	ordinary := Evaluate(Counts{Negative: 3, NegativeBySeverity: sev(0, 3)}).
+		WithHistory([]int{3, 4, 3, 2, 3, 4})
+	if ordinary.Trend != TrendSteady {
+		t.Errorf("trend = %q, want %q", ordinary.Trend, TrendSteady)
+	}
+}
+
+func TestTrendUnknownWithoutHistory(t *testing.T) {
+	r := Evaluate(Counts{Negative: 4, NegativeBySeverity: sev(0, 4)}).WithHistory([]int{3})
+	if r.Trend != "" {
+		t.Errorf("trend = %q, want empty when history is too short to judge", r.Trend)
+	}
+}

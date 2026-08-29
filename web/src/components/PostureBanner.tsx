@@ -1,4 +1,4 @@
-import { Posture } from "../api";
+import { Meta, Posture } from "../api";
 import { cssColor, postureColor, TONES } from "../taxonomy";
 
 // The single at-a-glance reading. Its job is as much to prevent false alarm as
@@ -7,9 +7,11 @@ import { cssColor, postureColor, TONES } from "../taxonomy";
 export default function PostureBanner({
   posture,
   scope,
+  meta,
 }: {
   posture: Posture | null;
   scope: string;
+  meta: Meta | null;
 }) {
   if (!posture) {
     return (
@@ -33,6 +35,15 @@ export default function PostureBanner({
           <div className="posture-level" style={{ color: colour }}>
             {posture.level_name}
             <span className="posture-of">{posture.level} of 5</span>
+            {/* A scale that can only ratchet up stops being informative — the
+                US advisory system settled permanently on "guarded" and never
+                once used its two lowest levels. Naming improvement as its own
+                state is what keeps the ladder honest in both directions. */}
+            {trendLabel(posture.trend) && (
+              <span className="posture-trend" data-trend={posture.trend}>
+                {trendLabel(posture.trend)}
+              </span>
+            )}
           </div>
         </div>
 
@@ -89,10 +100,49 @@ export default function PostureBanner({
           </div>
         </>
       )}
+
+      {/* The exact rules behind the number above. A reading a reader cannot
+          check is one they have to take on trust, and this dashboard asks for
+          rather less trust than that. */}
+      {meta?.posture_rules?.length ? (
+        <details className="posture-rules">
+          <summary>How this level is decided</summary>
+          <p>
+            The first matching rule sets the level. Counts cover the last 7
+            days.
+          </p>
+          <ol>
+            {meta.posture_rules.map((r, i) => (
+              <li key={i}>
+                <strong>{r.level_name}</strong> ({r.level} of 5) — {r.condition}
+              </li>
+            ))}
+          </ol>
+          <p>Then:</p>
+          <ul>
+            {meta.posture_adjustments.map((a, i) => (
+              <li key={i}>{a}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
     </section>
   );
 }
 
 function balanceLabel(positive: number, neutral: number, negative: number): string {
   return `${positive} favourable, ${neutral} neutral, ${negative} adverse`;
+}
+
+// "steady" is deliberately not shown: a badge on every ordinary week is noise,
+// and the absence of a badge already reads as unremarkable.
+function trendLabel(trend: string): string {
+  switch (trend) {
+    case "de-escalating":
+      return "↓ easing";
+    case "escalating":
+      return "↑ rising";
+    default:
+      return "";
+  }
 }

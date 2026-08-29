@@ -51,6 +51,17 @@ type Incident struct {
 	Source string `json:"source"`
 	URL    string `json:"url"`
 	Title  string `json:"title"`
+
+	// Set once the incident has been clustered into an event. A nil EventID
+	// means "not assessed yet", which is different from "uncorroborated" —
+	// the UI must not grade an incident that was never checked.
+	EventID *int64 `json:"event_id,omitempty"`
+	// Reports counts the articles backing this event, Sources names them.
+	Reports int      `json:"reports"`
+	Sources []string `json:"sources,omitempty"`
+	// IndependentSources excludes state-controlled outlets; nil when
+	// unclustered. This is what Confidence is derived from.
+	IndependentSources *int `json:"independent_sources,omitempty"`
 }
 
 type SourceStatus struct {
@@ -218,36 +229,79 @@ type IncidentFilter struct {
 	Offset   int
 }
 
+// ListIncidents returns one row per event, not per article. Where an event was
+// reported by six outlets the feed shows it once, carrying the corroborating
+// sources alongside, rather than six near-identical entries that made an
+// ordinary week look like a wave.
+//
+// The representative row is the earliest independent report: state-controlled
+// outlets sort last so an event's headline and link are never TASS's when any
+// independent outlet also covered it.
 func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident, error) {
-	q := `SELECT i.id, i.raw_item_id, i.category, i.countries, i.severity, i.tone, COALESCE(i.place, ''), i.summary_en,
-	             i.lat, i.lon, i.confidence, i.occurred_at, r.source, r.url, r.title
-	      FROM incidents i JOIN raw_items r ON r.id = i.raw_item_id WHERE 1=1`
-	args := []any{}
-	n := 0
+	args := []any{StateControlledSources}
+	n := 1
+	where := ""
 	add := func(cond string, v any) {
 		n++
-		q += fmt.Sprintf(" AND "+cond, n)
+		where += fmt.Sprintf(" AND "+cond, n)
 		args = append(args, v)
 	}
 	if f.Category != "" {
-		add("i.category=$%d", f.Category)
+		add("COALESCE(e.category, i.category)=$%d", f.Category)
 	}
 	if f.Tone != "" {
-		add("i.tone=$%d", f.Tone)
+		add("COALESCE(e.tone, i.tone)=$%d", f.Tone)
 	}
 	if f.Country != "" {
-		add("$%d = ANY(i.countries)", f.Country)
+		add("$%d = ANY(COALESCE(e.countries, i.countries))", f.Country)
 	}
 	if f.Severity > 0 {
-		add("i.severity >= $%d", f.Severity)
+		add("COALESCE(e.severity, i.severity) >= $%d", f.Severity)
 	}
 	if !f.Since.IsZero() {
-		add("i.occurred_at >= $%d", f.Since)
+		add("COALESCE(e.occurred_at, i.occurred_at) >= $%d", f.Since)
 	}
 	if f.Limit <= 0 || f.Limit > 500 {
 		f.Limit = 100
 	}
-	q += fmt.Sprintf(" ORDER BY i.occurred_at DESC LIMIT %d OFFSET %d", f.Limit, f.Offset)
+
+	q := `WITH filtered AS (
+	        SELECT i.id, i.raw_item_id, i.event_id,
+	               COALESCE(e.category, i.category)       AS category,
+	               COALESCE(e.countries, i.countries)     AS countries,
+	               COALESCE(e.severity, i.severity)       AS severity,
+	               COALESCE(e.tone, i.tone)               AS tone,
+	               COALESCE(e.place, i.place, '')         AS place,
+	               COALESCE(e.summary_en, i.summary_en)   AS summary_en,
+	               COALESCE(e.lat, i.lat)                 AS lat,
+	               COALESCE(e.lon, i.lon)                 AS lon,
+	               COALESCE(e.confidence, i.confidence)   AS confidence,
+	               COALESCE(e.occurred_at, i.occurred_at) AS occurred_at,
+	               e.source_count AS independent_sources,
+	               r.source, r.url, r.title,
+	               ` + unitExpr + ` AS unit,
+	               (r.source = ANY($1)) AS state_media
+	        FROM incidents i
+	        LEFT JOIN events e ON e.id = i.event_id
+	        JOIN raw_items r ON r.id = i.raw_item_id
+	        WHERE 1=1` + where + `
+	      ),
+	      agg AS (
+	        SELECT unit, count(*) AS reports, array_agg(DISTINCT source) AS sources
+	        FROM filtered GROUP BY unit
+	      ),
+	      ranked AS (
+	        SELECT f.*, row_number() OVER (
+	                 PARTITION BY f.unit
+	                 ORDER BY f.state_media ASC, f.occurred_at ASC, f.id ASC) AS rn
+	        FROM filtered f
+	      )
+	      SELECT r.id, r.raw_item_id, r.event_id, r.category, r.countries, r.severity, r.tone,
+	             r.place, r.summary_en, r.lat, r.lon, r.confidence, r.occurred_at,
+	             r.source, r.url, r.title, a.reports, a.sources, r.independent_sources
+	      FROM ranked r JOIN agg a ON a.unit = r.unit
+	      WHERE r.rn = 1`
+	q += fmt.Sprintf(" ORDER BY r.occurred_at DESC LIMIT %d OFFSET %d", f.Limit, f.Offset)
 
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
@@ -257,9 +311,10 @@ func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident
 	incidents := []Incident{}
 	for rows.Next() {
 		var inc Incident
-		if err := rows.Scan(&inc.ID, &inc.RawItemID, &inc.Category, &inc.Countries, &inc.Severity,
-			&inc.Tone, &inc.Place, &inc.SummaryEN, &inc.Lat, &inc.Lon, &inc.Confidence, &inc.OccurredAt,
-			&inc.Source, &inc.URL, &inc.Title); err != nil {
+		if err := rows.Scan(&inc.ID, &inc.RawItemID, &inc.EventID, &inc.Category, &inc.Countries,
+			&inc.Severity, &inc.Tone, &inc.Place, &inc.SummaryEN, &inc.Lat, &inc.Lon,
+			&inc.Confidence, &inc.OccurredAt, &inc.Source, &inc.URL, &inc.Title,
+			&inc.Reports, &inc.Sources, &inc.IndependentSources); err != nil {
 			return nil, err
 		}
 		incidents = append(incidents, inc)
@@ -276,8 +331,18 @@ type TimelineBucket struct {
 // Timeline returns daily incident counts per category since the given time,
 // optionally filtered to one country.
 func (s *Store) Timeline(ctx context.Context, since time.Time, country string) ([]TimelineBucket, error) {
-	q := `SELECT date_trunc('day', occurred_at) AS day, category, count(*)
-	      FROM incidents WHERE occurred_at >= $1`
+	q := `WITH units AS (
+	        SELECT ` + unitExpr + ` AS unit,
+	               max(COALESCE(e.category, i.category)) AS category,
+	               max(COALESCE(e.countries, i.countries)) AS countries,
+	               min(COALESCE(e.occurred_at, i.occurred_at)) AS occurred_at
+	        FROM incidents i
+	        LEFT JOIN events e ON e.id = i.event_id
+	        WHERE i.occurred_at >= $1
+	        GROUP BY unit
+	      )
+	      SELECT date_trunc('day', occurred_at) AS day, category, count(*)
+	      FROM units WHERE true`
 	args := []any{since}
 	if country != "" {
 		q += ` AND $2 = ANY(countries)`
@@ -318,23 +383,34 @@ type SummaryCell struct {
 // items, so a week of defence announcements cannot inflate a threat reading.
 func (s *Store) Summary(ctx context.Context) ([]SummaryCell, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.country, i.category,
-		       count(*) FILTER (WHERE i.occurred_at >= now() - interval '7 days') AS recent,
-		       count(*) FILTER (WHERE i.occurred_at >= now() - interval '7 days'
-		                          AND i.tone = 'negative') AS recent_adverse,
-		       count(*) FILTER (WHERE i.occurred_at >= now() - interval '7 days'
-		                          AND i.tone = 'positive') AS recent_favourable,
-		       count(*) FILTER (WHERE i.occurred_at >= now() - interval '35 days'
-		                          AND i.occurred_at <  now() - interval '7 days'
-		                          AND i.tone = 'negative')::float / 4.0 AS baseline,
-		       count(*) FILTER (WHERE i.occurred_at >= now() - interval '35 days'
-		                          AND i.occurred_at <  now() - interval '7 days'
-		                          AND i.tone = 'negative') AS baseline_samples,
-		       COALESCE(max(i.severity) FILTER (WHERE i.occurred_at >= now() - interval '7 days'
-		                          AND i.tone = 'negative'), 0) AS max_sev
-		FROM incidents i, unnest(i.countries) AS c(country)
-		WHERE i.occurred_at >= now() - interval '35 days'
-		GROUP BY c.country, i.category`)
+		WITH units AS (
+		  SELECT `+unitExpr+` AS unit,
+		         max(COALESCE(e.category, i.category)) AS category,
+		         max(COALESCE(e.countries, i.countries)) AS countries,
+		         max(COALESCE(e.tone, i.tone)) AS tone,
+		         max(COALESCE(e.severity, i.severity)) AS severity,
+		         min(COALESCE(e.occurred_at, i.occurred_at)) AS occurred_at
+		  FROM incidents i
+		  LEFT JOIN events e ON e.id = i.event_id
+		  WHERE i.occurred_at >= now() - interval '35 days'
+		  GROUP BY unit
+		)
+		SELECT c.country, u.category,
+		       count(*) FILTER (WHERE u.occurred_at >= now() - interval '7 days') AS recent,
+		       count(*) FILTER (WHERE u.occurred_at >= now() - interval '7 days'
+		                          AND u.tone = 'negative') AS recent_adverse,
+		       count(*) FILTER (WHERE u.occurred_at >= now() - interval '7 days'
+		                          AND u.tone = 'positive') AS recent_favourable,
+		       count(*) FILTER (WHERE u.occurred_at >= now() - interval '35 days'
+		                          AND u.occurred_at <  now() - interval '7 days'
+		                          AND u.tone = 'negative')::float / 4.0 AS baseline,
+		       count(*) FILTER (WHERE u.occurred_at >= now() - interval '35 days'
+		                          AND u.occurred_at <  now() - interval '7 days'
+		                          AND u.tone = 'negative') AS baseline_samples,
+		       COALESCE(max(u.severity) FILTER (WHERE u.occurred_at >= now() - interval '7 days'
+		                          AND u.tone = 'negative'), 0) AS max_sev
+		FROM units u, unnest(u.countries) AS c(country)
+		GROUP BY c.country, u.category`)
 	if err != nil {
 		return nil, err
 	}
@@ -360,12 +436,20 @@ var StateControlledSources []string
 // unusual?" rather than leaving a bare number to be read as alarming.
 func (s *Store) WeeklyAdverseHistory(ctx context.Context, weeks int) ([]int, error) {
 	rows, err := s.pool.Query(ctx, `
+		WITH units AS (
+		  SELECT `+unitExpr+` AS unit,
+		         max(COALESCE(e.tone, i.tone)) AS tone,
+		         min(COALESCE(e.occurred_at, i.occurred_at)) AS occurred_at
+		  FROM incidents i
+		  LEFT JOIN events e ON e.id = i.event_id
+		  JOIN raw_items r ON r.id = i.raw_item_id
+		  WHERE i.occurred_at >= date_trunc('week', now()) - make_interval(weeks => $1)
+		    AND i.occurred_at < date_trunc('week', now())
+		    AND NOT (r.source = ANY($2))
+		  GROUP BY unit
+		)
 		SELECT date_trunc('week', occurred_at) AS wk, count(*)
-		FROM incidents i JOIN raw_items r ON r.id = i.raw_item_id
-		WHERE i.tone = 'negative'
-		  AND i.occurred_at >= date_trunc('week', now()) - make_interval(weeks => $1)
-		  AND i.occurred_at < date_trunc('week', now())
-		  AND NOT (r.source = ANY($2))
+		FROM units WHERE tone = 'negative'
 		GROUP BY wk ORDER BY wk`, weeks, StateControlledSources)
 	if err != nil {
 		return nil, err
@@ -383,9 +467,13 @@ func (s *Store) WeeklyAdverseHistory(ctx context.Context, weeks int) ([]int, err
 	return out, rows.Err()
 }
 
-// ToneCounts returns, for the last `days`, how many incidents carried each
+// ToneCounts returns, for the last `days`, how many *events* carried each
 // tone plus the severity histogram of the adverse ones. Optionally scoped to
 // one country.
+//
+// This counts units, not rows — see unitExpr. Before clustering existed, one
+// well-covered incident reported by six outlets contributed six to the adverse
+// count, so the posture reading tracked press attention rather than events.
 func (s *Store) ToneCounts(ctx context.Context, days int, country string) (map[string]int, [6]int, error) {
 	var sev [6]int
 	byTone := map[string]int{}
@@ -395,17 +483,25 @@ func (s *Store) ToneCounts(ctx context.Context, days int, country string) (map[s
 	//
 	// State-controlled sources are excluded outright: we monitor adversary
 	// messaging, but letting it feed the threat gauge would hand an adversary
-	// direct control of our own reading.
-	q := `SELECT i.tone, i.severity, count(*)
-	      FROM incidents i JOIN raw_items r ON r.id = i.raw_item_id
-	      WHERE i.occurred_at >= now() - make_interval(days => $1)
-	        AND NOT (r.source = ANY($2))`
+	// direct control of our own reading. Excluding them at the row level also
+	// gives the right answer per event — an event still counts if any
+	// independent outlet reported it, and drops out if only state media did.
+	q := `WITH units AS (
+	        SELECT ` + unitExpr + ` AS unit,
+	               max(COALESCE(e.tone, i.tone)) AS tone,
+	               max(COALESCE(e.severity, i.severity)) AS severity
+	        FROM incidents i
+	        LEFT JOIN events e ON e.id = i.event_id
+	        JOIN raw_items r ON r.id = i.raw_item_id
+	        WHERE i.occurred_at >= now() - make_interval(days => $1)
+	          AND NOT (r.source = ANY($2))`
 	args := []any{days, StateControlledSources}
 	if country != "" {
-		q += ` AND $3 = ANY(i.countries)`
+		q += ` AND $3 = ANY(COALESCE(e.countries, i.countries))`
 		args = append(args, country)
 	}
-	q += ` GROUP BY i.tone, i.severity`
+	q += ` GROUP BY unit)
+	      SELECT tone, severity, count(*) FROM units GROUP BY tone, severity`
 
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {

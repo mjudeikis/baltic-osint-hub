@@ -40,5 +40,9 @@ spec:
                   value: {{ .Values.collector.enrichModel | quote }}
                 - name: MAX_ENRICH_PER_RUN
                   value: {{ .Values.collector.maxEnrichPerRun | quote }}
+                - name: MAX_CLUSTER_PER_RUN
+                  value: {{ .Values.collector.maxClusterPerRun | quote }}
+                - name: CLUSTER_THRESHOLD
+                  value: {{ .Values.collector.clusterThreshold | quote }}
               resources:
                 {{- toYaml .Values.collector.resources | nindent 16 }}

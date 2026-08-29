@@ -10,6 +10,15 @@ const (
 // All returns every configured fetcher. Feed URLs verified 2026-08-29.
 // Sources without public RSS (CERT.LV, NKSC, TVP World) are covered
 // indirectly via GDELT.
+//
+// Deliberately NOT ingested, so the reasons are not rediscovered later:
+//   - Shadowserver's daily country telemetry is the best open cyber signal for
+//     this region, but their published terms forbid scraping. It needs their
+//     permission first, which is not ours to assume.
+//   - Großwald's Baltic Sea Security Tracker and ISW both forbid incorporation
+//     into other datasets or mapping platforms. Cite and link, never ingest.
+//   - Google's threat-intelligence blog serves an HTML shell at its advertised
+//     RSS path, not a feed.
 func All() []Fetcher {
 	feeds := []Fetcher{
 		// Tier 2 — national English-language news.
@@ -106,8 +115,52 @@ func extraSources() []Fetcher {
 		NewRSS("bellingcat", "https://www.bellingcat.com/feed/", "en", slow),
 		NewRSS("disinfolab", "https://www.disinfo.eu/feed/", "en", slow),
 
+		// --- Regional fact-checking hubs (EDMO) ---
+		// BECID is the Baltic EDMO hub (Tartu, Re:Baltica, Delfi EE/LT) and
+		// FACT hub also covers LT/LV/EE. Both publish analysis rather than
+		// data, so they are ingested as reporting; the classifier drops the
+		// training-and-events items that make up much of the feed.
+		//
+		// BECID's newest post when this was added was 10 June 2026, so it
+		// yields nothing under the 14-day ingest window — that is the feed
+		// being dormant, not a fetcher bug. Kept so it resumes on its own if
+		// they start publishing again. The regional disinfo-analysis
+		// ecosystem is generally quiet: Debunk.org managed four posts in all
+		// of 2026.
+		NewRSS("becid", "https://becid.ut.ee/feed/", "en", slow),
+		NewRSS("fact-hub", "https://fact-hub.eu/feed/", "en", slow),
+
+		// --- Cyber reporting ---
+		// Recorded Future's newsroom, one of the very few threat-intelligence
+		// outlets with an open feed — most of that industry publishes nothing
+		// machine-readable without a sales conversation. Carries only a handful
+		// of items per fetch, so it is polled on the fast interval.
+		NewRSS("the-record", "https://therecord.media/feed", "en", fast),
+
 		// --- Maritime: cable incidents and shadow-fleet reporting ---
 		NewRSS("maritime-exec", "https://maritime-executive.com/articles.rss", "en", slow),
+
+		// --- Nordic press: the Baltic Sea half of the watch ---
+		// Undersea infrastructure is one of our ten categories, but until these
+		// were added every source sat on the southern and eastern shore. The
+		// cables that matter run Finland–Estonia (Balticconnector, EstLink) and
+		// Sweden–Baltic, and those incidents are routinely broken by Finnish
+		// and Swedish newsrooms hours before the Baltic press picks them up.
+		// Neither country is in our monitored set; they are here because what
+		// happens in their waters lands on LT/LV/EE/PL.
+		//
+		// Yle permits RSS reuse for headlines that link back to the original
+		// but forbids copying article text, so it is headlines-only.
+		NewRSS("yle-news", "https://feeds.yle.fi/uutiset/v1/recent.rss?publisherIds=YLE_NEWS", "en", fast).HeadlinesOnly(),
+		NewRSS("svt-nyheter", "https://www.svt.se/rss.xml", "sv", fast),
+
+		// --- Independent Russian-language press in exile ---
+		// Classified independent, not state-controlled: the distinction is the
+		// whole point of the credibility field. They cover Russian domestic
+		// decision-making that state wires present only after the fact.
+		NewRSS("moscow-times", "https://www.themoscowtimes.com/rss/news", "en", fast),
+		NewRSS("novaya-europe", "https://novayagazeta.eu/feed/rss", "ru", slow),
+		NewRSS("meduza-en", "https://meduza.io/rss/en/all", "en", fast),
 
 		// --- Energy infrastructure ---
 		NewRSS("elering", "https://elering.ee/rss.xml", "et", slow),

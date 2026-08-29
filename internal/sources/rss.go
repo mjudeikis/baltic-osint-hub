@@ -23,6 +23,12 @@ type RSSFetcher struct {
 	// throttleGroup serializes fetchers sharing the same group with a gap
 	// between requests — for hosts that rate-limit per IP (reddit.com).
 	throttleGroup string
+	// headlinesOnly discards the item body, keeping only the headline and the
+	// link. Some publishers permit RSS use for headlines linking back to the
+	// original but forbid copying article text; this honours that without
+	// giving up the source. Classification still works — a headline is usually
+	// enough to decide category, country and tone — it is just less certain.
+	headlinesOnly bool
 }
 
 func NewRSS(name, url, lang string, interval time.Duration) *RSSFetcher {
@@ -32,6 +38,14 @@ func NewRSS(name, url, lang string, interval time.Duration) *RSSFetcher {
 // Throttled marks the feed as part of a serialization group.
 func (f *RSSFetcher) Throttled(group string) *RSSFetcher {
 	f.throttleGroup = group
+	return f
+}
+
+// HeadlinesOnly keeps the title and link but stores no article text, for
+// publishers whose feed terms allow headline reuse with a direct link but not
+// copying content.
+func (f *RSSFetcher) HeadlinesOnly() *RSSFetcher {
+	f.headlinesOnly = true
 	return f
 }
 
@@ -72,6 +86,9 @@ func (f *RSSFetcher) Fetch(ctx context.Context) ([]store.RawItem, error) {
 		body := entry.Description
 		if entry.Content != "" {
 			body = entry.Content
+		}
+		if f.headlinesOnly {
+			body = ""
 		}
 		items = append(items, store.RawItem{
 			Source:      f.name,

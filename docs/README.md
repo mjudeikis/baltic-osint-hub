@@ -9,6 +9,7 @@ claim.
 | [ukraine-2021-22.md](ukraine-2021-22.md) | What the Russian build-up before February 2022 actually looked like in open sources, and what it teaches about indicator design |
 | [watchlist.md](watchlist.md) | Why each site is watched, the empty/occupied/hollow classification, and the distance bands |
 | [sar-detection.md](sar-detection.md) | What Sentinel-1 can and cannot see, with the numbers |
+| [competitive-landscape.md](competitive-landscape.md) | Who else does this, which of our novelty claims survive scrutiny, and what we are missing |
 
 ## The design goal, stated plainly
 

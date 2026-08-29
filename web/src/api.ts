@@ -6,6 +6,8 @@ export interface Posture {
   balance: number;
   context: string;
   typical_week: number;
+  // "escalating" | "steady" | "de-escalating"; empty when history is too short.
+  trend: string;
   counts: {
     positive: number;
     neutral: number;
@@ -32,6 +34,15 @@ export interface Incident {
   source: string;
   url: string;
   title: string;
+  // Event clustering. reports counts the articles behind this event and
+  // sources names them. confidence_label is absent while an incident has not
+  // been clustered yet — which means "not assessed", not "uncorroborated".
+  event_id?: number;
+  reports: number;
+  sources?: string[];
+  independent_sources?: number;
+  confidence: number;
+  confidence_label?: string;
 }
 
 export interface TimelineBucket {
@@ -98,6 +109,22 @@ export const fetchTimeline = (days: number, country?: string) =>
 
 export const fetchSummary = () => get<SummaryCell[]>("/api/stats/summary");
 export const fetchSources = () => get<SourceStatus[]>("/api/sources");
+
+export interface PostureRule {
+  level: number;
+  level_name: string;
+  condition: string;
+}
+
+export interface Meta {
+  categories: string[];
+  countries: string[];
+  tones: string[];
+  posture_rules: PostureRule[];
+  posture_adjustments: string[];
+}
+
+export const fetchMeta = () => get<Meta>("/api/meta");
 
 // --- signal layers ---
 

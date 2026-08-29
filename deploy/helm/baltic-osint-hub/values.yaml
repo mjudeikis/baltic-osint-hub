@@ -19,6 +19,14 @@ collector:
   schedule: "0 * * * *"
   enrichModel: gpt-5-mini
   maxEnrichPerRun: "300"
+  # Event clustering. Embeddings are cheap next to classification, so this is
+  # set high enough to clear the historical backlog over a few runs.
+  maxClusterPerRun: "1000"
+  # Cosine similarity at which two reports are treated as the same event.
+  # Raising it merges less. Measured, not guessed — see the calibration test in
+  # internal/cluster: real duplicates score 0.73-0.86 and distinct events that
+  # clear the category and country guards top out at 0.64.
+  clusterThreshold: "0.70"
   resources:
     requests:
       cpu: 50m

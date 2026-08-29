@@ -28,6 +28,8 @@ func New(db *store.Store, log *slog.Logger) *Server {
 // Register mounts API routes on mux.
 func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/incidents", s.handleIncidents)
+	mux.HandleFunc("GET /api/incidents.csv", s.handleIncidentsCSV)
+	mux.HandleFunc("GET /api/incidents.geojson", s.handleIncidentsGeoJSON)
 	mux.HandleFunc("GET /api/stats/timeline", s.handleTimeline)
 	mux.HandleFunc("GET /api/stats/summary", s.handleSummary)
 	mux.HandleFunc("GET /api/stats/posture", s.handlePosture)
@@ -48,15 +50,28 @@ func (s *Server) Register(mux *http.ServeMux) {
 // run that changes the data cannot leave a reader looking at a stale — and
 // possibly falsely reassuring — reading for long. A five-minute window once
 // showed "Calm, 0 incidents" while the API was returning 68.
+// allowCORS marks a response as readable by any origin. The whole API is
+// read-only, public and unauthenticated, so there is nothing here a browser
+// could be tricked into leaking — and without this header the endpoints are
+// public but unusable from anyone else's page, which defeats the point of
+// publishing them. We consume half a dozen open datasets; returning nothing
+// would be poor manners.
+func allowCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+}
+
 func (s *Server) writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "public, max-age=60")
+	allowCORS(w)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		s.log.Error("encode", "err", err)
 	}
 }
 
-func (s *Server) handleIncidents(w http.ResponseWriter, r *http.Request) {
+// filterFrom reads the shared incident query parameters. All three incident
+// endpoints use it so an export always matches the view it was taken from.
+func filterFrom(r *http.Request) store.IncidentFilter {
 	q := r.URL.Query()
 	f := store.IncidentFilter{
 		Category: q.Get("category"),
@@ -77,16 +92,35 @@ func (s *Server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 	} else if days, err := strconv.Atoi(q.Get("days")); err == nil && days > 0 {
 		f.Since = time.Now().AddDate(0, 0, -days)
 	}
-	incidents, err := s.db.ListIncidents(r.Context(), f)
+	return f
+}
+
+func (s *Server) listOut(r *http.Request) ([]incidentOut, error) {
+	incidents, err := s.db.ListIncidents(r.Context(), filterFrom(r))
 	if err != nil {
-		s.fail(w, err)
-		return
+		return nil, err
 	}
 	// Classify each item's source so the UI can mark adversary messaging
 	// rather than rendering it like national broadcasting.
 	out := make([]incidentOut, 0, len(incidents))
 	for _, inc := range incidents {
-		out = append(out, incidentOut{Incident: inc, Credibility: sources.Credibility(inc.Source)})
+		o := incidentOut{Incident: inc, Credibility: sources.Credibility(inc.Source)}
+		// Only graded once clustered. An unclustered incident has not been
+		// checked for corroboration, which is not the same as having none, so
+		// it gets no label rather than a misleading "single source".
+		if inc.IndependentSources != nil {
+			o.ConfidenceLabel = store.ConfidenceLabel(*inc.IndependentSources)
+		}
+		out = append(out, o)
+	}
+	return out, nil
+}
+
+func (s *Server) handleIncidents(w http.ResponseWriter, r *http.Request) {
+	out, err := s.listOut(r)
+	if err != nil {
+		s.fail(w, err)
+		return
 	}
 	s.writeJSON(w, out)
 }
@@ -95,6 +129,9 @@ func (s *Server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 type incidentOut struct {
 	store.Incident
 	Credibility string `json:"credibility"`
+	// ConfidenceLabel spells out what the confidence score means; empty when
+	// the incident has not been clustered and so cannot be graded yet.
+	ConfidenceLabel string `json:"confidence_label,omitempty"`
 }
 
 func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
@@ -157,6 +194,14 @@ func (s *Server) handleMeta(w http.ResponseWriter, _ *http.Request) {
 		"categories": enrich.Categories,
 		"countries":  enrich.Countries,
 		"tones":      enrich.Tones,
+		// The ladder and its adjustments are published so a reader can check
+		// the posture reading against the counts rather than trusting it.
+		"posture_rules":       posture.Rules(),
+		"posture_adjustments": posture.Adjustments(),
+		"exports": map[string]string{
+			"csv":     "/api/incidents.csv",
+			"geojson": "/api/incidents.geojson",
+		},
 	})
 }
 

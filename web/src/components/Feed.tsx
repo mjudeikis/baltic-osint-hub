@@ -19,6 +19,8 @@ export default function Feed({ incidents }: { incidents: Incident[] }) {
         <article
           className="feed-item"
           key={inc.id}
+          // Stable anchor so a single incident can be linked to directly.
+          id={`incident-${inc.id}`}
           data-state-media={inc.credibility === "state-controlled" || undefined}
         >
           <div className="head">
@@ -51,6 +53,32 @@ export default function Feed({ incidents }: { incidents: Incident[] }) {
               })}
             </time>
             <span className="src">{inc.source}</span>
+            {/* Corroboration: how many independent outlets carried this, not
+                how many articles exist. Absent while unclustered, because an
+                incident nobody has checked is not the same as one that failed
+                the check. */}
+            {inc.confidence_label && (
+              <span
+                className="corrob"
+                data-level={inc.confidence_label.replace(/ /g, "-")}
+                title={
+                  inc.sources?.length
+                    ? `Reported by: ${inc.sources.join(", ")}`
+                    : undefined
+                }
+              >
+                {inc.confidence_label}
+                {inc.reports > 1 && ` · ${inc.reports} reports`}
+              </span>
+            )}
+            <a
+              className="permalink"
+              href={`#incident-${inc.id}`}
+              title="Link to this incident"
+              aria-label="Link to this incident"
+            >
+              #
+            </a>
             {inc.credibility === "state-controlled" && (
               <span
                 className="cred-warn"

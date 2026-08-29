@@ -1,0 +1,73 @@
+import { CATEGORIES, COUNTRIES } from "./taxonomy";
+
+// Filters live in the querystring so any view of this dashboard can be linked,
+// cited or bookmarked. A public-information site whose "12 adverse events in
+// Latvia this week" cannot be pointed at is not much use to anyone trying to
+// discuss it.
+
+export interface FilterState {
+  days: number;
+  country: string;
+  category: string;
+  tone: string;
+}
+
+export const DAY_PRESETS = [7, 30, 90] as const;
+
+const TONES = ["negative", "positive", "neutral"];
+
+// Values arrive from a URL anyone can edit, so each is checked against the
+// taxonomy rather than passed through to the API. An unrecognised value falls
+// back to the default instead of producing an empty dashboard with no
+// explanation.
+function oneOf(value: string | null, allowed: readonly string[]): string {
+  return value && allowed.includes(value) ? value : "";
+}
+
+export function readFilters(search: string = location.search): FilterState {
+  const p = new URLSearchParams(search);
+  const days = Number(p.get("days"));
+  return {
+    days: (DAY_PRESETS as readonly number[]).includes(days) ? days : 30,
+    country: oneOf(p.get("country"), COUNTRIES),
+    category: oneOf(
+      p.get("category"),
+      CATEGORIES.map((c) => c.key),
+    ),
+    tone: oneOf(p.get("tone"), TONES),
+  };
+}
+
+// toQuery omits defaults so a shared link carries only what was actually
+// chosen, and the bare URL stays clean.
+export function toQuery(f: FilterState): string {
+  const p = new URLSearchParams();
+  if (f.days !== 30) p.set("days", String(f.days));
+  if (f.country) p.set("country", f.country);
+  if (f.category) p.set("category", f.category);
+  if (f.tone) p.set("tone", f.tone);
+  const q = p.toString();
+  return q ? `?${q}` : "";
+}
+
+// syncURL rewrites the address bar without adding a history entry: changing a
+// filter should not mean the back button walks through every intermediate
+// selection before leaving the page.
+export function syncURL(f: FilterState): void {
+  const next = location.pathname + toQuery(f) + location.hash;
+  if (next !== location.pathname + location.search + location.hash) {
+    history.replaceState(null, "", next);
+  }
+}
+
+// exportURL builds a download link carrying whatever the reader is looking at,
+// so an export always matches the view it was taken from.
+export function exportURL(kind: "csv" | "geojson", f: FilterState): string {
+  const p = new URLSearchParams();
+  p.set("days", String(f.days));
+  if (f.country) p.set("country", f.country);
+  if (f.category) p.set("category", f.category);
+  if (f.tone) p.set("tone", f.tone);
+  p.set("limit", "500");
+  return `/api/incidents.${kind}?${p}`;
+}

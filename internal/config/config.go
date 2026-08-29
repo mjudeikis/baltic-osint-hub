@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mjudeikis/baltic-osint-hub/internal/cluster"
 )
 
 // Config holds all runtime configuration, loaded from environment variables.
@@ -31,6 +33,14 @@ type Config struct {
 	EnrichModel string
 	// MaxEnrichPerRun caps LLM classification per collector run as a cost guard.
 	MaxEnrichPerRun int
+	// MaxClusterPerRun caps how many incidents are embedded and clustered per
+	// run. Embeddings are far cheaper than classification, so this is set high
+	// enough to clear the historical backlog over a few runs.
+	MaxClusterPerRun int
+	// ClusterThreshold is the cosine similarity at which two reports are
+	// treated as the same event. Exposed so it can be retuned against live
+	// data without a rebuild; see internal/cluster for why it is set high.
+	ClusterThreshold float64
 	// RunTimeout caps one collector run. It must exceed the time needed to
 	// walk the whole SAR watchlist, which is one API round-trip per site.
 	RunTimeout time.Duration
@@ -54,6 +64,8 @@ func Load() (*Config, error) {
 		StaticDir:              os.Getenv("STATIC_DIR"),
 		EnrichModel:            getenv("ENRICH_MODEL", "gpt-5-mini"),
 		MaxEnrichPerRun:        getenvInt("MAX_ENRICH_PER_RUN", 300),
+		MaxClusterPerRun:       getenvInt("MAX_CLUSTER_PER_RUN", 1000),
+		ClusterThreshold:       getenvFloat("CLUSTER_THRESHOLD", cluster.DefaultThreshold),
 		RunTimeout:             time.Duration(getenvInt("RUN_TIMEOUT_MINUTES", 50)) * time.Minute,
 	}
 	if c.DatabaseURL == "" {
@@ -101,6 +113,15 @@ func getenvInt(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+func getenvFloat(key string, def float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return def

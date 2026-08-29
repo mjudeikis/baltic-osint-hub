@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import {
   fetchIncidents,
   fetchLayers,
+  fetchMeta,
   fetchPosture,
+  Meta,
   Posture,
   fetchSources,
   fetchSummary,
@@ -31,7 +33,12 @@ import SideNav, { NavItem } from "./components/SideNav";
 import SourcesPanel from "./components/SourcesPanel";
 import Preparedness from "./components/Preparedness";
 
-const DAY_PRESETS = [7, 30, 90] as const;
+import {
+  DAY_PRESETS,
+  exportURL,
+  readFilters,
+  syncURL,
+} from "./urlState";
 
 const NAV_ITEMS: NavItem[] = [
   { id: "board", label: "By country" },
@@ -44,16 +51,20 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export default function App() {
-  const [days, setDays] = useState<number>(30);
-  const [country, setCountry] = useState("");
-  const [category, setCategory] = useState("");
-  const [tone, setTone] = useState("");
+  // Seeded from the URL so a shared link opens on the same view it was copied
+  // from, rather than resetting the reader to the default dashboard.
+  const initial = readFilters();
+  const [days, setDays] = useState<number>(initial.days);
+  const [country, setCountry] = useState(initial.country);
+  const [category, setCategory] = useState(initial.category);
+  const [tone, setTone] = useState(initial.tone);
   const [summary, setSummary] = useState<SummaryCell[]>([]);
   const [timeline, setTimeline] = useState<TimelineBucket[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [sources, setSources] = useState<SourceStatus[]>([]);
   const [layers, setLayers] = useState<Layers | null>(null);
   const [posture, setPosture] = useState<Posture | null>(null);
+  const [meta, setMeta] = useState<Meta | null>(null);
   const [focusedSite, setFocusedSite] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -66,6 +77,11 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  const filters = { days, country, category, tone };
+  useEffect(() => {
+    syncURL({ days, country, category, tone });
+  }, [days, country, category, tone]);
+
   useEffect(() => {
     fetchSummary()
       .then(setSummary)
@@ -77,6 +93,13 @@ export default function App() {
       .then(setLayers)
       .catch(() => {});
   }, [refreshKey]);
+
+  // The taxonomy and the posture rules are static per deploy; fetched once.
+  useEffect(() => {
+    fetchMeta()
+      .then(setMeta)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchTimeline(days, country || undefined)
@@ -129,6 +152,7 @@ export default function App() {
           <PostureBanner
             posture={posture}
             scope={country ? COUNTRY_NAMES[country as never] : ""}
+            meta={meta}
           />
 
           <Section id="board" title="Last 7 days by country">
@@ -232,6 +256,18 @@ export default function App() {
             title="Incident feed"
             aside={`${incidents.length} shown${category ? ` · ${categoryLabel(category)}` : ""}`}
           >
+            {/* Both links carry the filters currently on screen, so what a
+                reader downloads is what they were looking at. */}
+            <p className="export-links">
+              Download this view:{" "}
+              <a href={exportURL("csv", filters)}>CSV</a>
+              {" · "}
+              <a href={exportURL("geojson", filters)}>GeoJSON</a>
+              <span style={{ color: "var(--text-muted)" }}>
+                {" "}
+                — GeoJSON covers located incidents only.
+              </span>
+            </p>
             <Feed incidents={incidents} />
           </Section>
 

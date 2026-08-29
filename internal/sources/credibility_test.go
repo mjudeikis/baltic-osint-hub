@@ -21,6 +21,16 @@ func TestCredibilityClasses(t *testing.T) {
 		"lt-vsd":  CredInstitutional,
 		"europol": CredInstitutional,
 		"icds":    CredInstitutional,
+		// Nordic public broadcasters sit with LRT/ERR/LSM, not with the wires.
+		"yle-news":    CredInstitutional,
+		"svt-nyheter": CredInstitutional,
+		"becid":       CredInstitutional,
+
+		// Exiled Russian press: independent, and must never be lumped in with
+		// the state wires it exists to counter.
+		"moscow-times":  CredIndependent,
+		"novaya-europe": CredIndependent,
+		"meduza-en":     CredIndependent,
 
 		"tg:meduzalive":      CredIndependent, // exiled independent press
 		"tg:theinsider":      CredIndependent,
@@ -38,7 +48,8 @@ func TestCredibilityClasses(t *testing.T) {
 // Exiled Russian outlets report on Russia but are not controlled by it; the
 // distinction is the whole point of the field.
 func TestExiledPressIsNotStateControlled(t *testing.T) {
-	for _, s := range []string{"tg:meduzalive", "tg:astrapress", "tg:mediazzzona", "tg:theinsider", "tg:zerkalo_io"} {
+	for _, s := range []string{"tg:meduzalive", "tg:astrapress", "tg:mediazzzona", "tg:theinsider", "tg:zerkalo_io",
+		"moscow-times", "novaya-europe", "meduza-en"} {
 		if IsStateControlled(s) {
 			t.Errorf("%s wrongly marked state-controlled", s)
 		}

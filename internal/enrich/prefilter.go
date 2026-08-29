@@ -18,6 +18,15 @@ var regionTerms = []string{
 	// Cyrillic (Telegram channels post in Russian)
 	"литв", "латв", "эстон", "польш", "прибалт", "калининград",
 	"белорус", "беларус", "сувал", "нато",
+	// Swedish and Finnish. Neither country is monitored, but the cables and
+	// shadow-fleet traffic that matter to LT/LV/EE run through their waters
+	// and their newsrooms report those incidents first. Without these terms a
+	// Swedish-language report of a cable cut fails the region test and is
+	// dropped before it ever reaches classification.
+	"östersjön", "litauen", "lettland", "estland", "polen", "ryssland",
+	"vitryssland", "ryska",
+	"itämeri", "liettua", "latvia", "viro", "viron", "puola", "venäj",
+	"valko-venäj",
 }
 
 var threatTerms = []string{
@@ -53,6 +62,14 @@ var threatTerms = []string{
 	// Polish / Lithuanian
 	"szpieg", "granic", "wojsk", "zagro", "czołg", "kolumna", "przerzut",
 	"šnip", "kibernet", "pasien", "grėsm", "kolona", "kariuomen",
+	// Swedish ("sabotage", "attack", "drönare" share roots with English but
+	// "kabel" and "störning" do not, and cable damage is the whole reason
+	// these feeds are watched)
+	"kabel", "störning", "spionage", "intrång", "ubåt", "fartyg", "militär",
+	"gräns", "hot", "försvar", "ledning",
+	// Finnish
+	"kaapeli", "häirin", "vakoilu", "lennokki", "droni", "alus", "sotilas",
+	"raja", "uhka", "puolustus",
 }
 
 // AlwaysRelevantSources skip the region/threat check — everything they

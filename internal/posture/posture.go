@@ -65,7 +65,25 @@ type Reading struct {
 	// TypicalWeek is the median adverse count of recent weeks, -1 when there
 	// is not yet enough history to say.
 	TypicalWeek int `json:"typical_week"`
+	// Trend names the direction of travel: "escalating", "steady",
+	// "de-escalating", or "" when there is not enough history.
+	//
+	// This exists because a level that can only ratchet upward eventually
+	// stops meaning anything. The US Homeland Security Advisory System died of
+	// exactly that — its 2009 review found the national baseline had settled
+	// permanently at "guarded" and the two lowest levels were never used once
+	// in nine years. The US Drought Monitor avoids it by naming a class that
+	// explicitly includes "coming out of" drought, and this is our version:
+	// improvement is visible in its own right rather than only as the absence
+	// of a rise.
+	Trend string `json:"trend"`
 }
+
+const (
+	TrendEscalating   = "escalating"
+	TrendSteady       = "steady"
+	TrendDeEscalating = "de-escalating"
+)
 
 // WithHistory adds the "is this normal?" comparison. History is adverse counts
 // per completed week, oldest first.
@@ -82,17 +100,55 @@ func (r Reading) WithHistory(history []int) Reading {
 
 	switch n := r.Counts.Negative; {
 	case typical == 0 && n == 0:
+		r.Trend = TrendSteady
 		r.Context = "In line with recent weeks, which have also been quiet."
 	case n > typical*2 && n-typical >= 3:
+		r.Trend = TrendEscalating
 		r.Context = "Above the recent norm — a typical week over the last " +
 			strconv.Itoa(len(history)) + " weeks saw " + strconv.Itoa(typical) + "."
 	case n*2 < typical:
+		r.Trend = TrendDeEscalating
 		r.Context = "Below the recent norm — a typical week saw " + strconv.Itoa(typical) + "."
 	default:
+		r.Trend = TrendSteady
 		r.Context = "About normal for this region — a typical week over the last " +
 			strconv.Itoa(len(history)) + " weeks saw " + strconv.Itoa(typical) + "."
 	}
 	return r
+}
+
+// Rule is one published step of the ladder, so a reader can check the reading
+// against the data rather than taking it on trust. ACLED publishes the weight
+// vector behind its conflict index; this is the equivalent for ours.
+type Rule struct {
+	Level     int    `json:"level"`
+	LevelName string `json:"level_name"`
+	Condition string `json:"condition"`
+}
+
+// Rules describes, in order of precedence, exactly how Evaluate decides. It is
+// written by hand rather than derived, so any change to Evaluate must be
+// mirrored here — TestRulesMatchEvaluate fails if the two drift apart.
+func Rules() []Rule {
+	return []Rule{
+		{int(Severe), Severe.String(), "any adverse event at severity 5"},
+		{int(High), High.String(), "any adverse event at severity 4"},
+		{int(Elevated), Elevated.String(), "3 or more adverse events at severity 3"},
+		{int(Watchful), Watchful.String(), "any adverse event at severity 3, or 5 or more adverse events at any severity"},
+		{int(Watchful), Watchful.String(), "at least one adverse event"},
+		{int(Calm), Calm.String(), "no adverse events"},
+	}
+}
+
+// Adjustments are the rules that can move a reading after the ladder has set
+// it. Both directions are published for the same reason the ladder is.
+func Adjustments() []string {
+	return []string{
+		"Elevated steps down to Watchful when favourable developments outnumber adverse ones.",
+		"High and Severe never step down: a serious event stands on its own regardless of good news elsewhere.",
+		"State-controlled outlets are excluded from every count, so adversary messaging cannot move the reading.",
+		"Counts are per event, not per article: multiple outlets reporting one incident count once.",
+	}
 }
 
 // Evaluate derives the level from the adverse mix, letting favourable
