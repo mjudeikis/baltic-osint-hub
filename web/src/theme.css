@@ -878,3 +878,34 @@ footer.site td {
     margin-left: 0;
   }
 }
+
+/* Timeline scrubbing and the single-day filter it produces. */
+.brush-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.brush-note {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.day-filter {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+/* A button that reads as a link: used for "reset" and "show the full range",
+   which are actions, not navigation, so they must not be anchors. */
+.linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent, var(--text-primary));
+  text-decoration: underline;
+  cursor: pointer;
+}
+.linklike:hover {
+  opacity: 0.8;
+}

@@ -52,12 +52,24 @@ RSS + GDELT + Telegram + Reddit + Bluesky ──► collector (CronJob, hourly) 
     flags loitering (<1 kn for 30+ min) and AIS gaps (1h+ dark inside a
     corridor). Runs as a persistent stream inside the server (needs a free
     `AISSTREAM_API_KEY`);
+  - **AIS archive** — Finnish Digitraffic positions inside the cable corridors,
+    polled every 15 min (CC BY 4.0, no key). aisstream is realtime-only, so
+    this is the only track history there is. Coverage is the Finnish network:
+    good in the Gulf of Finland, partial in the central Baltic, **none in
+    NordBalt** — an empty NordBalt corridor means no data, not a quiet one;
+  - **Sanctioned vessels** — OpenSanctions maritime, refreshed daily, joined to
+    sea events by MMSI so a loitering vessel can be named as shadow-fleet or
+    sanctioned rather than just "a vessel" (CC BY-NC);
+  - **CERT.PL warning list** — daily count of domains added to Poland's
+    phishing blocklist as a cyber-activity rate. Counts only, never the
+    domains; Poland only, since no equivalent open feed exists for LT/LV/EE;
   - **Satellite change detection** — Sentinel-1 SAR over monitored sites
     (Kaliningrad garrisons, Belarusian air bases and training grounds, rail
     and border chokepoints; see `internal/layers/aoi.go`). Runs at most daily.
 - **Server** (`cmd/server`) exposes `/api/incidents`, `/api/stats/timeline`,
   `/api/stats/summary`, `/api/stats/posture`, `/api/sources`, `/api/meta`,
-  `/api/layers/*`, plus `/api/incidents.csv` and `/api/incidents.geojson`, and
+  `/api/layers/*`, `/api/stats/posture/history`, `/api/history/{YYYY-MM-DD}`,
+  plus `/api/incidents.csv` and `/api/incidents.geojson`, and
   serves the built frontend. Responses carry `Cache-Control: max-age=60` and
   `Access-Control-Allow-Origin: *` — the API is read-only and public, so it is
   usable from anyone else's page.
@@ -193,10 +205,10 @@ that, when finally measured, merged nothing at all.
 | `MAX_ENRICH_PER_RUN` | `300` | cost guard per collector run |
 | `MAX_CLUSTER_PER_RUN` | `1000` | incidents embedded and clustered per run |
 | `CLUSTER_THRESHOLD` | `0.70` | cosine similarity at which two reports are one event; higher merges less |
-| `ACLED_EMAIL` / `ACLED_PASSWORD` | — | myACLED credentials ([register free](https://acleddata.com/user/register)); fetcher lands in phase 2 |
 | `FIRMS_MAP_KEY` | — | NASA FIRMS thermal layer ([free key](https://firms.modaps.eosdis.nasa.gov/api/map_key/)) |
 | `OPENSKY_CLIENT_ID` / `OPENSKY_CLIENT_SECRET` | — | OpenSky OAuth2; anonymous fallback |
 | `AISSTREAM_API_KEY` | — | sea-activity watch ([free key](https://aisstream.io)) |
+| `AIS_ARCHIVE_MINUTES` | `15` | how often the server archives AIS positions from Digitraffic (no key) |
 | `COPERNICUS_CLIENT_ID` / `COPERNICUS_CLIENT_SECRET` | — | Sentinel-1 SAR change detection ([free OAuth client](https://dataspace.copernicus.eu)) |
 | `LISTEN_ADDR` | `:8080` | server bind address |
 | `STATIC_DIR` | — | built frontend dir |

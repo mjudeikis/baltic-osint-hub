@@ -92,7 +92,7 @@ deliberately degraded free tier.
 | Source | Cadence | Access | Notes |
 |---|---|---|---|
 | [Shadowserver Dashboard](https://dashboard.shadowserver.org/) | Daily, rolling 2 years | Undocumented `?json=1` on every stats page, no auth | `data_set=count_per_population` inverts the country ranking usefully. **Their terms bar scraping — email them first.** |
-| [CERT.PL Warning List](https://hole.cert.pl/domains/v2/domains.json) | Continuous | 8 formats, no key, 140k entries | Records carry insert and delete dates, so a daily series back to March 2020 is reconstructible from one download. The best-engineered open feed in the region. |
+| [CERT.PL Warning List](https://hole.cert.pl/domains/v2/domains.json) | Continuous | 8 formats, no key, 140k entries | Records carry insert and delete dates, so one download yields a ready-made daily series. **Correction: measured 2026-08-29, the endpoint holds a rolling ~6-month window (183 days, ~765 domains/day), not history back to March 2020.** Still the best-engineered open feed in the region. |
 | [Global Fishing Watch](https://globalfishingwatch.org/our-apis/documentation) | Continuous | Free, 50k req/day, CC BY-NC | AIS gaps, loitering, encounters and Sentinel-1 `sar-presence` are first-class event types. |
 | [Finnish Digitraffic AIS](https://meri.digitraffic.fi/api/ais/v1/locations) | Live | **CC BY 4.0, no key, commercial use allowed** | Verified serving live Baltic GeoJSON. |
 | [OpenSanctions maritime](https://www.opensanctions.org/datasets/maritime/) | Daily | CSV + JSON | 20,406 vessels from 23 sources. |
@@ -363,21 +363,149 @@ surface.
 - **A national alerting system** — kriis.ee, LT72, sargs.lv and RCB do this with
   legal authority. The disclaimer in `Preparedness.tsx` is exactly right.
 
-## Open questions to resolve before building
+## Open questions — resolved 2026-08-29
 
-- **ACLED's current access and content terms.** Material: the README already
-  carries `ACLED_EMAIL`/`ACLED_PASSWORD` and a phase-2 fetcher, and their terms
-  bar building a "functional substitute".
-- **gpsjam.org's licensing.** We already depend on it and the site documents no
-  terms of use anywhere.
-- **Shadowserver's position on automated collection** — ask before wiring it up.
-- **Global Fishing Watch's Baltic tanker gap coverage** — get a token and run one
-  bbox query before designing around it.
+These were the "check before building" items. All four are now answered, and
+two of them changed what gets built.
 
-## Not researched
+### ACLED: do not ingest. Question closed.
 
-**The EU preparedness and national-alerting cluster** — krisinformation.se,
-72tuntia.fi, the German NINA public-warning API, MeteoAlarm CAP feeds, and
-LT72/kriis.ee assessed as products rather than as links. This is the benchmark
-most directly aimed at "inform without alarming", and **its absence is a gap in
-this analysis, not a finding.**
+Their [EULA](https://acleddata.com/eula) grants a non-commercial licence but
+requires that anything published externally be **transformative**, and states
+plainly that it is *"not sufficient for Licensed Content to simply be
+supplemented, appended, excerpted, reorganized, or made available through
+Licensee's own dashboard."* Putting ACLED events on this dashboard is the
+example they use of what does not qualify.
+
+Their [content terms](https://acleddata.com/contentusage) separately bar use
+*"to create or develop any dataset, product, or platform that competes with, or
+creates a functional substitute for, any of ACLED's content, products, or
+platforms"* — and this project is a dataset, an API and a map of conflict
+events.
+
+**Acted on:** the phase-2 ACLED fetcher is cancelled and `ACLED_EMAIL` /
+`ACLED_PASSWORD` have been removed from the config, `.env.example`, the README
+and the Helm values. Link to ACLED; never fetch it. Their API does permit
+non-commercial *analysis* use, so this is a constraint on republishing, not a
+judgement about the source.
+
+### gpsjam: no licence exists, and the upstream has changed hands.
+
+[gpsjam.org](https://gpsjam.org/about) states its source — ADS-B Exchange — and
+publishes **no licence, terms, or attribution requirement anywhere**. Confirmed
+by direct fetch of the site and its About page.
+
+More consequential: **ADS-B Exchange's terms now redirect to `jetnet.com`**. It
+was acquired, and [JETNET's terms](https://www.jetnet.com/legal/terms-of-use/)
+prohibit customers from *"publish, resell, transmit, broadcast, distribute the
+Services or data acquired from the Services"*, bar derivative works without
+written permission, and forbid using the data to build competing products. The
+"free and open" flight-data source underneath our jamming layer is now governed
+by a commercial aviation-data company's licence.
+
+What this changes:
+
+- **Daily ingest of gpsjam's published aggregate stays.** We consume a derived
+  public statistic (share of aircraft reporting degraded navigation per H3
+  cell), attribute it, and link out — not raw ADS-B.
+- **The proposed four-year backfill is withdrawn pending permission.** Bulk
+  historical extraction is a far larger ask than daily polling and is the thing
+  most likely to be unwelcome. Email the author first, exactly as with
+  Shadowserver.
+
+### The Sentinel-1 claim: verified for open source, and must be scoped that way.
+
+Re-run through GitHub's search API rather than guessed URLs. `sentinel-1 change
+detection` returns **84 repositories**; adding `military` returns **zero**. The
+`sar` + `osint` topic pair returns exactly **two** repos, one of which is
+maritime *search-and-rescue*, not radar. The single genuine analogue,
+[pixelpawnshop/sar-sentinel-1-change-detection](https://github.com/pixelpawnshop/sar-sentinel-1-change-detection),
+has 2 stars, was created and abandoned within two days in February 2026, and
+has no watchlist and no hosted instance.
+
+So the negative holds — **but only for open source**, and the earlier research
+never drew that line. Commercial satellite-intelligence firms do exactly this
+as their core business. The defensible public sentence is *"we are not aware of
+another open-source project doing this"*, never *"no one else does this"*.
+
+### Shadowserver: unchanged, still needs an email.
+
+Not re-examined; their terms bar scraping and that requires their permission.
+
+## What national alerting systems actually do
+
+This was the cluster the original research never reached, and it is the one
+most directly aimed at "inform without alarming". All endpoints below were
+fetched live on 2026-08-29.
+
+### The machine-readable ones
+
+| System | Endpoint | State |
+|---|---|---|
+| **NINA / MoWaS** (Germany) | `warnung.bund.de/api31/mowas/mapData.json` | 200, no key. 13 active civil-protection warnings, **every one severity `Minor`** |
+| **MeteoAlarm** | `feeds.meteoalarm.org/api/v1/warnings/feeds-{country}` | 200, no key, **CAP v2.0**. 31 alerts for Estonia |
+| **Krisinformation** (Sweden) | `api.krisinformation.se/v3/news`, `/v3/vmas` | 200, no key |
+
+### The finding that matters
+
+**Not one of these publishes a standing national threat level.**
+
+- Sweden's `/v3/vmas` — the national emergency-alert channel — returns an empty
+  array. No active alert is its normal state.
+- Estonia's [kriis.ee](https://www.kriis.ee/en) has **no permanent gauge at
+  all**: alerts when something happens, plus standing practical guidance.
+- Germany's NINA carries 13 warnings, all `Minor`. A functioning country on an
+  ordinary day is not zero and not a crisis.
+- US NTAS, as previously recorded, was empty from May 2023 to June 2025.
+
+Every body with actual legal authority to alert a population has converged on
+the same instrument: **silence by default, time-boxed alerts, and permanent
+preparedness advice** — not a dial. The Dutch DTN is the sole counter-example,
+and it publishes a periodic assessment *document*, not a live reading.
+
+That is a genuine tension with our posture index, and it should be stated
+rather than explained away. The defence is that we are a monitoring aggregator,
+not an alerting authority — a distinction `Preparedness.tsx` already makes
+explicitly. But it argues for making "nothing unusual" the visually dominant
+default rather than an always-lit gauge.
+
+### CAP is the vocabulary to borrow
+
+Both NINA and MeteoAlarm speak the OASIS **Common Alerting Protocol**, and its
+field set is better than ours in a specific way — it separates three things we
+partly conflate:
+
+| CAP field | Values seen live | Our equivalent |
+|---|---|---|
+| `severity` | Minor, Moderate | severity 1–5 |
+| `certainty` | Observed, Likely, Possible | **confidence** (new, from clustering) |
+| `urgency` | Immediate, Expected, Future | *nothing* |
+| `responseType` | **AllClear**, Monitor | **trend: de-escalating** (new) |
+
+Two things fall out:
+
+- **`AllClear` validates the recovery state.** 34 of 62 Estonian alert blocks
+  carry `responseType: AllClear` — an internationally standardised way of
+  saying "this is over". Our `de-escalating` trend is the same idea, arrived at
+  independently, and can now cite a standard rather than only the US Drought
+  Monitor.
+- **`certainty` is what our new confidence field is**, and mapping
+  corroborated / single-source / state-media-only onto Observed / Likely /
+  Possible would make our exports interoperable with an established standard
+  instead of inventing private vocabulary.
+
+`urgency` we have no equivalent for and arguably should: "this happened" and
+"this is expected" are different claims.
+
+## Still not researched
+
+The preparedness cluster above is now covered, but two gaps remain:
+
+- **72tuntia.fi and LT72 as products.** Both are reachable (200) and were not
+  examined; kriis.ee and krisinformation.se were taken as representative of the
+  pattern. Worth confirming Lithuania and Finland do not break it.
+- **Open web search was unavailable for this pass** — the session's budget was
+  exhausted — so everything above came from direct fetches against known URLs
+  plus GitHub's search API. That is why the Sentinel-1 negative is scoped to
+  open source: GitHub search cannot see commercial products, papers without
+  repositories, or government systems.

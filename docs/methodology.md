@@ -79,6 +79,11 @@ An incident that has not been clustered yet carries **no** label rather than
 "single source" — not-yet-assessed is a different thing from uncorroborated,
 and the UI must not conflate them.
 
+This axis is the same one the OASIS **Common Alerting Protocol** calls
+`certainty` (Observed / Likely / Possible), which both the German NINA feed and
+MeteoAlarm's CAP feeds use. Ours was arrived at independently but maps onto it,
+and aligning the export vocabulary is an open improvement.
+
 **Pre-filter** (`internal/enrich/prefilter.go`) is keyword-based across
 EN/LT/LV/ET/PL/RU/BE. It exists purely to cut LLM cost: roughly 80% of raw
 volume is off-topic. Region-scoped sources (a Belarus monitoring channel, a
@@ -157,6 +162,21 @@ A reading also carries a **trend** — `escalating`, `steady` or
 norm is badged "↓ easing"; `steady` is deliberately not badged, because a badge
 on every ordinary week is noise.
 
+CAP has the same idea as a standard field: `responseType: AllClear`, which
+appeared on 34 of 62 Estonian alert blocks when the feed was read on
+2026-08-29. Improvement being expressible is not a novelty, it is established
+alerting practice.
+
+Worth stating plainly, because it cuts against us: **no national alerting
+system publishes a standing threat level.** Sweden's national alert endpoint
+returns an empty array as its normal state, Estonia's crisis site has no
+permanent gauge at all, and Germany's civil-protection feed carried 13 warnings
+all rated `Minor`. Every body with legal authority to alert a population uses
+silence by default plus time-boxed alerts. We publish a standing reading
+because we are an aggregator rather than an alerting authority — a distinction
+the preparedness section states explicitly — but the comparison is a real
+argument for keeping "nothing unusual" the visually dominant default.
+
 This exists because a scale that only ratchets upward stops meaning anything.
 The US Homeland Security Advisory System is the cautionary case: its 2009
 review found the national baseline had settled permanently at "guarded", and
@@ -176,9 +196,40 @@ Machine measurements, shown on the map and never passed through the LLM:
 | Thermal anomalies | NASA FIRMS VIIRS, filtered to approach sectors | 2 h |
 | Air activity | OpenSky snapshots of border boxes | 30 min |
 | Sea activity | aisstream.io AIS in cable corridors | continuous |
+| AIS archive | Finnish Digitraffic positions in the corridors | 15 min |
+| Sanctioned vessels | OpenSanctions maritime, joined by MMSI | daily |
+| Cyber rate (PL) | CERT.PL warning-list additions per day | daily |
 | Satellite change | Sentinel-1 SAR over the watchlist | 20 h |
 
 These are **detections, not verified events**, and the UI says so.
+
+### What the AIS archive does and does not cover
+
+aisstream.io is realtime-only and keeps no history, so a loitering event could
+never be re-examined afterwards. The archive fixes that going forward by
+storing every position inside a cable corridor.
+
+Its coverage is the *Finnish* national AIS network, measured 2026-08-29 against
+a live response of 1,095 vessels:
+
+| Corridor | Vessels seen | Coverage |
+|---|---|---|
+| Gulf of Finland | 196 | good |
+| Central Baltic | 52 | partial (feed starts at 57.4°N, the box at 56.5°N) |
+| NordBalt | 0 | **none** |
+
+That happens to cover Balticconnector and the EstLink cables, where the
+highest-profile incidents occurred. But **an empty NordBalt corridor means no
+data, not a quiet corridor**, and aisstream remains the only source there.
+
+### Naming the vessel
+
+Sea events are joined to the OpenSanctions maritime dataset by MMSI, so the
+dashboard can say a *listed shadow-fleet* vessel loitered over a cable rather
+than merely that a vessel did. Roughly 6,600 of the dataset's ~20,400 vessels
+publish an MMSI; the rest are IMO-only and cannot be matched against an AIS
+broadcast. **An unmatched vessel is therefore not a cleared vessel**, and the
+UI shows the absence of a flag as exactly that.
 
 ## What the dashboard refuses to claim
 

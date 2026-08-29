@@ -14,6 +14,7 @@ import (
 	"github.com/mjudeikis/baltic-osint-hub/internal/config"
 	"github.com/mjudeikis/baltic-osint-hub/internal/enrich"
 	"github.com/mjudeikis/baltic-osint-hub/internal/layers"
+	"github.com/mjudeikis/baltic-osint-hub/internal/posture"
 	"github.com/mjudeikis/baltic-osint-hub/internal/sources"
 	"github.com/mjudeikis/baltic-osint-hub/internal/store"
 )
@@ -54,6 +55,44 @@ func main() {
 	// are grouped immediately rather than a cycle late.
 	clusterIncidents(ctx, log, db, enrich.NewEmbedder(cfg.OpenAIAPIKey, cfg.OpenAIBaseURL),
 		cfg.MaxClusterPerRun, cfg.ClusterThreshold)
+
+	// Snapshot last, so the archive records the reading as it stands after
+	// this run's classification and clustering rather than before them.
+	snapshotPosture(ctx, log, db)
+}
+
+// snapshotPosture archives what the dashboard is publishing right now, so the
+// reading can be checked after the fact — including when it turns out to have
+// been wrong. A monitor that asks to be trusted should keep a record of its own
+// judgements rather than only ever showing the current one.
+func snapshotPosture(ctx context.Context, log *slog.Logger, db *store.Store) {
+	byTone, sev, err := db.ToneCounts(ctx, 7, "")
+	if err != nil {
+		log.Error("snapshot: tone counts", "err", err)
+		return
+	}
+	reading := posture.Evaluate(posture.Counts{
+		Positive:           byTone[enrich.TonePositive],
+		Neutral:            byTone[enrich.ToneNeutral],
+		Negative:           byTone[enrich.ToneNegative],
+		NegativeBySeverity: sev,
+	})
+	if history, err := db.WeeklyAdverseHistory(ctx, 12); err == nil {
+		reading = reading.WithHistory(history)
+	}
+	summary, err := db.Summary(ctx)
+	if err != nil {
+		log.Error("snapshot: summary", "err", err)
+		summary = nil
+	}
+	if err := db.SavePostureSnapshot(ctx, time.Now(), int(reading.Level), reading.LevelName,
+		reading.Trend, reading.Counts.Negative, reading.Counts.Positive, reading.Counts.Neutral,
+		reading, summary); err != nil {
+		log.Error("snapshot: save", "err", err)
+		return
+	}
+	log.Info("posture snapshot", "level", reading.LevelName, "trend", reading.Trend,
+		"adverse", reading.Counts.Negative, "favourable", reading.Counts.Positive)
 }
 
 // clusterIncidents groups incident reports of the same event. It is the reason
@@ -154,6 +193,18 @@ func runLayers(ctx context.Context, log *slog.Logger, db *store.Store, cfg *conf
 	} else {
 		log.Warn("FIRMS_MAP_KEY not set; skipping thermal layer")
 	}
+
+	// The sanctions watchlist is rebuilt daily upstream and is a 5MB download,
+	// so once a day is both sufficient and polite. It needs no key.
+	gated("layer:sanctions", 24*time.Hour, func() error {
+		return (&layers.SanctionedVessels{Client: client}).Run(ctx, db, log)
+	})
+
+	// The whole warning list is a ~25MB download that restates its own history,
+	// so daily is right: more often wastes bandwidth for identical data.
+	gated("layer:certpl", 24*time.Hour, func() error {
+		return (&layers.CertPL{Client: client}).Run(ctx, db, log)
+	})
 
 	// SAR is the expensive layer (one Statistical API call per AOI against a
 	// finite processing-unit budget) and Sentinel-1's revisit is measured in

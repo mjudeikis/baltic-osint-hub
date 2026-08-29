@@ -39,7 +39,7 @@ collector:
 #   kubectl -n osint create secret generic baltic-osint-hub --from-env-file=.env
 # Keys: OPENAI_API_KEY (required for classification); optional: FIRMS_MAP_KEY,
 # OPENSKY_CLIENT_ID/OPENSKY_CLIENT_SECRET, AISSTREAM_API_KEY,
-# COPERNICUS_CLIENT_ID/COPERNICUS_CLIENT_SECRET, ACLED_EMAIL/ACLED_PASSWORD,
+# COPERNICUS_CLIENT_ID/COPERNICUS_CLIENT_SECRET,
 # and DATABASE_URL when postgres.enabled=false.
 # A local-dev DATABASE_URL/STATIC_DIR in the secret is harmless — the chart
 # overrides both (unless postgres.enabled=false, where the secret's

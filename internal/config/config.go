@@ -15,10 +15,14 @@ type Config struct {
 	DatabaseURL   string
 	OpenAIAPIKey  string
 	OpenAIBaseURL string // optional; for OpenAI-compatible gateways
-	// ACLED authenticates with myACLED account credentials (OAuth token
-	// exchange); the fetcher is skipped when either is empty.
-	ACLEDEmail    string
-	ACLEDPassword string
+	// NOTE: ACLED credentials were removed deliberately, not lost. Their EULA
+	// (read 2026-08-29) states that external use must be "transformative" and
+	// that it is "not sufficient for Licensed Content to simply be
+	// supplemented, appended, excerpted, reorganized, or made available
+	// through Licensee's own dashboard" — which is exactly what this project
+	// would do. Their content terms separately bar creating "a functional
+	// substitute for" ACLED's platforms. So the phase-2 fetcher is cancelled;
+	// link to ACLED, never ingest it. See docs/competitive-landscape.md.
 	// Signal-layer credentials; each layer is skipped when its key is empty.
 	FIRMSMapKey         string // NASA FIRMS (free registration)
 	OpenSkyClientID     string // OpenSky OAuth2; anonymous fallback when empty
@@ -41,6 +45,11 @@ type Config struct {
 	// treated as the same event. Exposed so it can be retuned against live
 	// data without a rebuild; see internal/cluster for why it is set high.
 	ClusterThreshold float64
+	// AISArchiveInterval is how often the server polls Digitraffic for vessel
+	// positions to archive. 15 minutes gives roughly 3 nautical miles between
+	// fixes at cruising speed, which is enough to reconstruct a track near a
+	// cable; the endpoint is free, keyless and unmetered.
+	AISArchiveInterval time.Duration
 	// RunTimeout caps one collector run. It must exceed the time needed to
 	// walk the whole SAR watchlist, which is one API round-trip per site.
 	RunTimeout time.Duration
@@ -52,8 +61,6 @@ func Load() (*Config, error) {
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		OpenAIAPIKey:           os.Getenv("OPENAI_API_KEY"),
 		OpenAIBaseURL:          os.Getenv("OPENAI_BASE_URL"),
-		ACLEDEmail:             os.Getenv("ACLED_EMAIL"),
-		ACLEDPassword:          os.Getenv("ACLED_PASSWORD"),
 		FIRMSMapKey:            os.Getenv("FIRMS_MAP_KEY"),
 		OpenSkyClientID:        os.Getenv("OPENSKY_CLIENT_ID"),
 		OpenSkyClientSecret:    os.Getenv("OPENSKY_CLIENT_SECRET"),
@@ -65,6 +72,7 @@ func Load() (*Config, error) {
 		EnrichModel:            getenv("ENRICH_MODEL", "gpt-5-mini"),
 		MaxEnrichPerRun:        getenvInt("MAX_ENRICH_PER_RUN", 300),
 		MaxClusterPerRun:       getenvInt("MAX_CLUSTER_PER_RUN", 1000),
+		AISArchiveInterval:     time.Duration(getenvInt("AIS_ARCHIVE_MINUTES", 15)) * time.Minute,
 		ClusterThreshold:       getenvFloat("CLUSTER_THRESHOLD", cluster.DefaultThreshold),
 		RunTimeout:             time.Duration(getenvInt("RUN_TIMEOUT_MINUTES", 50)) * time.Minute,
 	}

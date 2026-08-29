@@ -88,6 +88,7 @@ export interface IncidentQuery {
   tone?: string;
   severity?: number;
   days?: number;
+  day?: string;
   limit?: number;
 }
 
@@ -98,6 +99,7 @@ export function fetchIncidents(q: IncidentQuery): Promise<Incident[]> {
   if (q.country) params.set("country", q.country);
   if (q.severity) params.set("severity", String(q.severity));
   if (q.days) params.set("days", String(q.days));
+  if (q.day) params.set("day", q.day);
   params.set("limit", String(q.limit ?? 200));
   return get(`/api/incidents?${params}`);
 }

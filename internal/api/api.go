@@ -33,6 +33,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stats/timeline", s.handleTimeline)
 	mux.HandleFunc("GET /api/stats/summary", s.handleSummary)
 	mux.HandleFunc("GET /api/stats/posture", s.handlePosture)
+	mux.HandleFunc("GET /api/stats/posture/history", s.handlePostureHistory)
+	mux.HandleFunc("GET /api/history/{day}", s.handleHistoryDay)
 	mux.HandleFunc("GET /api/sources", s.handleSources)
 	mux.HandleFunc("GET /api/meta", s.handleMeta)
 	mux.HandleFunc("GET /api/layers/firms", s.handleFIRMS)
@@ -40,16 +42,12 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/layers/air", s.handleAir)
 	mux.HandleFunc("GET /api/layers/sea", s.handleSea)
 	mux.HandleFunc("GET /api/layers/sar", s.handleSAR)
+	mux.HandleFunc("GET /api/layers/certpl", s.handleCertPL)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 }
 
-// writeJSON sends the payload with a short public cache window. It is
-// deliberately short: the edge still absorbs traffic spikes, but a collector
-// run that changes the data cannot leave a reader looking at a stale — and
-// possibly falsely reassuring — reading for long. A five-minute window once
-// showed "Calm, 0 incidents" while the API was returning 68.
 // allowCORS marks a response as readable by any origin. The whole API is
 // read-only, public and unauthenticated, so there is nothing here a browser
 // could be tricked into leaking — and without this header the endpoints are
@@ -60,6 +58,11 @@ func allowCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
+// writeJSON sends the payload with a short public cache window. It is
+// deliberately short: the edge still absorbs traffic spikes, but a collector
+// run that changes the data cannot leave a reader looking at a stale — and
+// possibly falsely reassuring — reading for long. A five-minute window once
+// showed "Calm, 0 incidents" while the API was returning 68.
 func (s *Server) writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "public, max-age=60")
@@ -91,6 +94,14 @@ func filterFrom(r *http.Request) store.IncidentFilter {
 		f.Since = v
 	} else if days, err := strconv.Atoi(q.Get("days")); err == nil && days > 0 {
 		f.Since = time.Now().AddDate(0, 0, -days)
+	}
+	if v, err := time.Parse(time.RFC3339, q.Get("until")); err == nil {
+		f.Until = v
+	}
+	// ?day=YYYY-MM-DD is the shorthand the timeline uses when a bar is
+	// clicked; it overrides any since/days already parsed.
+	if v, err := time.Parse("2006-01-02", q.Get("day")); err == nil {
+		f.Since, f.Until = v, v.AddDate(0, 0, 1)
 	}
 	return f
 }
@@ -179,6 +190,46 @@ func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, reading)
 }
 
+// handlePostureHistory serves the trailing daily readings, so the dashboard's
+// own track record is visible rather than only its current opinion.
+func (s *Server) handlePostureHistory(w http.ResponseWriter, r *http.Request) {
+	days := 90
+	if v, err := strconv.Atoi(r.URL.Query().Get("days")); err == nil && v > 0 && v <= 730 {
+		days = v
+	}
+	out, err := s.db.PostureHistory(r.Context(), days)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.writeJSON(w, out)
+}
+
+// handleHistoryDay replays what the dashboard published on one date.
+//
+// A day with no snapshot returns 404, never an empty reading: "we have no
+// record of that date" and "that date was calm" are different answers, and
+// rendering the first as the second would be exactly the false reassurance
+// this project is built to avoid.
+func (s *Server) handleHistoryDay(w http.ResponseWriter, r *http.Request) {
+	day, err := time.Parse("2006-01-02", r.PathValue("day"))
+	if err != nil {
+		http.Error(w, "day must be YYYY-MM-DD", http.StatusBadRequest)
+		return
+	}
+	snap, err := s.db.PostureOn(r.Context(), day)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if snap == nil {
+		allowCORS(w)
+		http.Error(w, "no snapshot recorded for that day", http.StatusNotFound)
+		return
+	}
+	s.writeJSON(w, snap)
+}
+
 func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {
 	statuses, err := s.db.SourceStatuses(r.Context())
 	if err != nil {
@@ -241,8 +292,48 @@ func (s *Server) handleAir(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, out)
 }
 
+// seaEventOut adds the vessel's sanctions listing, when it has one. This is
+// the difference between "a vessel loitered over a cable corridor" and "a
+// vessel already listed as shadow-fleet loitered over a cable corridor" — the
+// first is a curiosity, the second is a finding.
+type seaEventOut struct {
+	store.SeaEvent
+	Sanctioned *store.SanctionedVessel `json:"sanctioned,omitempty"`
+}
+
 func (s *Server) handleSea(w http.ResponseWriter, r *http.Request) {
-	out, err := s.db.SeaSince(r.Context(), sinceDays(r, 7, 30))
+	events, err := s.db.SeaSince(r.Context(), sinceDays(r, 7, 30))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	mmsis := make([]int64, 0, len(events))
+	for _, e := range events {
+		mmsis = append(mmsis, e.MMSI)
+	}
+	listed, err := s.db.LookupSanctionedVessels(r.Context(), mmsis)
+	if err != nil {
+		// The watchlist is an enrichment, not a dependency: a failed lookup
+		// must not blank the sea layer. Absence of a flag already means
+		// "not matched", which is what the reader gets here.
+		s.log.Error("sanctions lookup", "err", err)
+		listed = nil
+	}
+	out := make([]seaEventOut, 0, len(events))
+	for _, e := range events {
+		o := seaEventOut{SeaEvent: e}
+		if v, ok := listed[e.MMSI]; ok {
+			o.Sanctioned = &v
+		}
+		out = append(out, o)
+	}
+	s.writeJSON(w, out)
+}
+
+// handleCertPL serves the daily CERT.PL warning-list rate. Poland only —
+// no equivalent open feed exists for LT, LV or EE.
+func (s *Server) handleCertPL(w http.ResponseWriter, r *http.Request) {
+	out, err := s.db.CertPLSince(r.Context(), sinceDays(r, 365, 3650))
 	if err != nil {
 		s.fail(w, err)
 		return

@@ -225,8 +225,11 @@ type IncidentFilter struct {
 	Tone     string
 	Severity int // minimum severity, 0 = any
 	Since    time.Time
-	Limit    int
-	Offset   int
+	// Until bounds the window at the top, so a single day can be selected
+	// rather than only "everything since". Zero means no upper bound.
+	Until  time.Time
+	Limit  int
+	Offset int
 }
 
 // ListIncidents returns one row per event, not per article. Where an event was
@@ -260,6 +263,9 @@ func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident
 	}
 	if !f.Since.IsZero() {
 		add("COALESCE(e.occurred_at, i.occurred_at) >= $%d", f.Since)
+	}
+	if !f.Until.IsZero() {
+		add("COALESCE(e.occurred_at, i.occurred_at) < $%d", f.Until)
 	}
 	if f.Limit <= 0 || f.Limit > 500 {
 		f.Limit = 100

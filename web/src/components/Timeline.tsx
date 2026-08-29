@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
+  Brush,
   XAxis,
   YAxis,
   Tooltip,
@@ -14,7 +15,21 @@ import { CATEGORIES, categoryLabel, cssColor } from "../taxonomy";
 // Stacked daily counts. The 8 chart categories use their fixed slots; folded
 // categories (energy, political) merge into a single muted "Other" series so
 // the stack never exceeds the validated 8-slot palette.
-export default function Timeline({ buckets }: { buckets: TimelineBucket[] }) {
+//
+// The chart is also the date control: drag the brush to narrow the window, or
+// click a bar to pull the feed to that single day. Until now it was a picture
+// you could only look at, while every comparable dashboard lets you scrub.
+export default function Timeline({
+  buckets,
+  onSelectDay,
+}: {
+  buckets: TimelineBucket[];
+  onSelectDay?: (day: string) => void;
+}) {
+  // Brush indices, or null for "the whole window". Held here rather than
+  // lifted, because narrowing the view is a reading gesture, not a filter the
+  // API needs to know about.
+  const [range, setRange] = useState<[number, number] | null>(null);
   const { data, series } = useMemo(() => {
     const byDay = new Map<string, Record<string, number | string>>();
     for (const b of buckets) {
@@ -48,10 +63,26 @@ export default function Timeline({ buckets }: { buckets: TimelineBucket[] }) {
     return <p style={{ color: "var(--text-muted)" }}>No incidents in this window yet.</p>;
   }
 
+  const [from, to] = range ?? [0, data.length - 1];
+  const shown = data.slice(from, to + 1);
+  const total = shown.reduce(
+    (sum, row) =>
+      sum + series.reduce((n, s) => n + ((row[s.key] as number) ?? 0), 0),
+    0,
+  );
+  const narrowed = range !== null && shown.length < data.length;
+
   return (
     <>
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={data} barCategoryGap={1}>
+        <BarChart
+          data={data}
+          barCategoryGap={1}
+          onClick={(e: { activeLabel?: string }) => {
+            if (onSelectDay && e?.activeLabel) onSelectDay(e.activeLabel);
+          }}
+          style={onSelectDay ? { cursor: "pointer" } : undefined}
+        >
           <CartesianGrid stroke={cssColor("--grid")} vertical={false} />
           <XAxis
             dataKey="day"
@@ -90,8 +121,36 @@ export default function Timeline({ buckets }: { buckets: TimelineBucket[] }) {
               radius={i === series.length - 1 ? [3, 3, 0, 0] : undefined}
             />
           ))}
+          <Brush
+            dataKey="day"
+            height={22}
+            travellerWidth={8}
+            stroke={cssColor("--baseline")}
+            fill={cssColor("--surface-2")}
+            tickFormatter={(d: string) => String(d).slice(5)}
+            onChange={(r: { startIndex?: number; endIndex?: number }) => {
+              if (r?.startIndex === undefined || r?.endIndex === undefined) return;
+              const whole = r.startIndex === 0 && r.endIndex === data.length - 1;
+              setRange(whole ? null : [r.startIndex, r.endIndex]);
+            }}
+          />
         </BarChart>
       </ResponsiveContainer>
+      {narrowed && (
+        <p className="brush-note">
+          {shown[0].day as string} to {shown[shown.length - 1].day as string} —{" "}
+          <strong>{total}</strong> {total === 1 ? "event" : "events"} in view.{" "}
+          <button className="linklike" onClick={() => setRange(null)}>
+            reset
+          </button>
+        </p>
+      )}
+      {onSelectDay && (
+        <p className="brush-hint">
+          Drag the strip below the chart to narrow the range; click a bar to
+          show that day in the feed.
+        </p>
+      )}
       <div className="legend" aria-hidden={false}>
         {series.map((s) => (
           <span className="key" key={s.key}>

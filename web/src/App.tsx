@@ -58,6 +58,7 @@ export default function App() {
   const [country, setCountry] = useState(initial.country);
   const [category, setCategory] = useState(initial.category);
   const [tone, setTone] = useState(initial.tone);
+  const [day, setDay] = useState(initial.day);
   const [summary, setSummary] = useState<SummaryCell[]>([]);
   const [timeline, setTimeline] = useState<TimelineBucket[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -77,10 +78,10 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  const filters = { days, country, category, tone };
+  const filters = { days, country, category, tone, day };
   useEffect(() => {
-    syncURL({ days, country, category, tone });
-  }, [days, country, category, tone]);
+    syncURL({ days, country, category, tone, day });
+  }, [days, country, category, tone, day]);
 
   useEffect(() => {
     fetchSummary()
@@ -114,13 +115,14 @@ export default function App() {
   useEffect(() => {
     fetchIncidents({
       days,
+      day: day || undefined,
       country: country || undefined,
       category: category || undefined,
       tone: tone || undefined,
     })
       .then(setIncidents)
       .catch((e) => setError(String(e)));
-  }, [days, country, category, tone, refreshKey]);
+  }, [days, country, category, tone, day, refreshKey]);
 
   return (
     <div className="container">
@@ -166,6 +168,9 @@ export default function App() {
                 setTone("negative");
                 // Seven days, because the board's numbers are a 7-day count.
                 setDays(7);
+                // A stale single-day selection would leave the feed showing
+                // fewer items than the tile the reader just clicked.
+                setDay("");
                 document
                   .getElementById("feed")
                   ?.scrollIntoView({ block: "start" });
@@ -223,7 +228,13 @@ export default function App() {
             id="trend"
             title={`Incidents per day${country ? ` — ${COUNTRY_NAMES[country as never]}` : ""}`}
           >
-            <Timeline buckets={timeline} />
+            <Timeline
+              buckets={timeline}
+              onSelectDay={(d) => {
+                setDay(d);
+                document.getElementById("feed")?.scrollIntoView({ block: "start" });
+              }}
+            />
           </Section>
 
           <Section id="map" title="Situation map">
@@ -256,6 +267,14 @@ export default function App() {
             title="Incident feed"
             aside={`${incidents.length} shown${category ? ` · ${categoryLabel(category)}` : ""}`}
           >
+            {day && (
+              <p className="day-filter">
+                Showing <strong>{day}</strong> only.{" "}
+                <button className="linklike" onClick={() => setDay("")}>
+                  show the full range
+                </button>
+              </p>
+            )}
             {/* Both links carry the filters currently on screen, so what a
                 reader downloads is what they were looking at. */}
             <p className="export-links">

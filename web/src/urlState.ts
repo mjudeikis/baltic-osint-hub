@@ -10,6 +10,10 @@ export interface FilterState {
   country: string;
   category: string;
   tone: string;
+  // A single selected day (YYYY-MM-DD) from clicking the timeline, or "".
+  // Shareable like every other filter — "what happened on the 12th" is exactly
+  // the kind of view someone wants to send to a colleague.
+  day: string;
 }
 
 export const DAY_PRESETS = [7, 30, 90] as const;
@@ -35,6 +39,7 @@ export function readFilters(search: string = location.search): FilterState {
       CATEGORIES.map((c) => c.key),
     ),
     tone: oneOf(p.get("tone"), TONES),
+    day: /^\d{4}-\d{2}-\d{2}$/.test(p.get("day") ?? "") ? p.get("day")! : "",
   };
 }
 
@@ -46,6 +51,7 @@ export function toQuery(f: FilterState): string {
   if (f.country) p.set("country", f.country);
   if (f.category) p.set("category", f.category);
   if (f.tone) p.set("tone", f.tone);
+  if (f.day) p.set("day", f.day);
   const q = p.toString();
   return q ? `?${q}` : "";
 }
@@ -68,6 +74,7 @@ export function exportURL(kind: "csv" | "geojson", f: FilterState): string {
   if (f.country) p.set("country", f.country);
   if (f.category) p.set("category", f.category);
   if (f.tone) p.set("tone", f.tone);
+  if (f.day) p.set("day", f.day);
   p.set("limit", "500");
   return `/api/incidents.${kind}?${p}`;
 }

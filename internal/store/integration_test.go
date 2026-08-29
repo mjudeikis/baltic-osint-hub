@@ -36,7 +36,7 @@ func testStore(t *testing.T) (*Store, context.Context) {
 	// keeps it simple and is safe because this only ever runs against a
 	// throwaway database the caller opted into.
 	if _, err := s.pool.Exec(ctx,
-		`TRUNCATE events, incidents, raw_items, source_runs RESTART IDENTITY CASCADE`); err != nil {
+		`TRUNCATE events, incidents, raw_items, source_runs, posture_snapshots RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	return s, ctx
