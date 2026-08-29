@@ -396,27 +396,30 @@ For this chart, with release `osint` in namespace `osint`:
 kubectl -n osint create job collector-manual-$(date +%s) \
   --from=cronjob/osint-baltic-osint-hub-collector
 
-kubectl -n osint get jobs -l job-name --sort-by=.metadata.creationTimestamp
+kubectl -n osint get jobs --sort-by=.metadata.creationTimestamp
 kubectl -n osint logs -f job/<job-name>
 ```
 
 The Job copies the CronJob's pod template as it exists *at creation time*, so it
 picks up the current `image.tag`, the current `baltic-osint-hub` secret, and
-`pullPolicy: Always` — i.e. it pulls the newest `latest`. The name must be unique
-and the timestamp suffix handles that; a plain `collector-manual` fails the
-second time with `AlreadyExists`.
+`pullPolicy: Always` — i.e. it pulls the newest `latest`. It also inherits
+`activeDeadlineSeconds: 1500`, so a wedged run is killed after 25 minutes. The
+name must be unique; the timestamp suffix handles that, whereas a plain
+`collector-manual` fails the second time with `AlreadyExists`.
 
-Safe to run alongside the scheduled job: the collector dedupes by URL and
-normalized-title hash, and per-source fetch intervals are enforced internally,
-so an extra run mostly no-ops rather than re-fetching everything. It does spend
-OpenAI credit on whatever it finds new, bounded by `MAX_ENRICH_PER_RUN`.
+Two consequences of the CronJob `ownerReference` kubectl attaches:
 
-Clean up finished manual jobs (the CronJob's own history is pruned
-automatically):
+- the manual Job counts as an active job for `concurrencyPolicy: Forbid`, so a
+  scheduled run that comes due while it is still going is **skipped**, not
+  queued;
+- it is pruned by the same `successfulJobsHistoryLimit: 3`, so finished manual
+  jobs clean themselves up. Delete one early by name if you want it gone sooner
+  (`kubectl -n osint delete job <job-name>`).
 
-```sh
-kubectl -n osint delete job -l job-name --field-selector status.successful=1
-```
+Running one alongside a scheduled run is otherwise harmless: the collector
+dedupes by URL and normalized-title hash and enforces per-source fetch intervals
+internally, so an extra run largely no-ops instead of re-fetching. It does spend
+OpenAI credit on whatever is genuinely new, bounded by `MAX_ENRICH_PER_RUN`.
 
 ## Disclaimer
 
