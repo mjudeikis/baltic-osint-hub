@@ -7,7 +7,7 @@ disinformation, airspace and border incidents, espionage, and military activity.
 ## How it works
 
 ```
-RSS + GDELT + Telegram + Reddit + Bluesky ──► collector (CronJob, 30 min) ──► Postgres ──► server ──► dashboard
+RSS + GDELT + Telegram + Reddit + Bluesky ──► collector (CronJob, hourly) ──► Postgres ──► server ──► dashboard
                           │
                           └─ OpenAI (gpt-5-mini) classifies each new item:
                              relevant? category, countries, severity 1–5,
@@ -51,6 +51,27 @@ RSS + GDELT + Telegram + Reddit + Bluesky ──► collector (CronJob, 30 min) 
 - **Frontend** (`web/`) — React + Recharts + MapLibre: per-country threat board,
   stacked daily trend, situation map with togglable signal layers, satellite
   change-detection panel, filterable feed.
+
+### Cadence
+
+The CronJob runs **hourly** (`collector.schedule`), but every source and layer
+enforces its own minimum interval internally, keyed off its last *successful*
+run. Changing the schedule therefore shifts worst-case staleness without
+multiplying calls to rate-limited upstreams; a failing source still retries on
+the next invocation.
+
+| Source / layer | Minimum interval |
+|---|---|
+| News RSS, Telegram, GDELT, Bluesky | 30 min |
+| Reddit (serialised, 10 s apart) | 1 h |
+| Think tanks, CERT, MoD feeds | 6 h |
+| OpenSky air snapshots | 30 min |
+| FIRMS thermal | 2 h |
+| gpsjam | 6 h (stores per day) |
+| Sentinel-1 SAR | 20 h |
+
+LLM spend tracks item volume, not schedule: deduplication means each item is
+classified exactly once regardless of how often the collector runs.
 
 ### How SAR change detection works
 
@@ -108,13 +129,177 @@ For frontend iteration run `npm run dev` in `web/` (proxies /api to :8080).
 | `LISTEN_ADDR` | `:8080` | server bind address |
 | `STATIC_DIR` | — | built frontend dir |
 
-## Deploy (k8s + Cloudflare Tunnel)
+## Self-hosting (k8s + Cloudflare Tunnel)
+
+Sections are ordered and each assumes the previous one has been applied. Nothing
+below assumes an existing cluster add-on — if your cluster already runs cfgate
+and a tunnel (check with `kubectl get crd | grep cfgate.io`), skip to
+[Deploy the chart](#4-deploy-the-chart) and just add your zone.
+
+Requirements: a Kubernetes cluster with a default StorageClass (k3s, kind with
+the local-path provisioner, any managed cluster), `kubectl`, `helm` 3, and a
+domain you control.
+
+### 1. Cloudflare zone
+
+A *zone* is a domain Cloudflare serves DNS for. You need one before anything
+else; the tunnel controller writes records into it.
+
+1. Register the domain (any registrar; Cloudflare Registrar is fine).
+2. Add it to Cloudflare — **Dashboard → Add a domain**, pick the Free plan.
+3. Cloudflare assigns two nameservers (e.g. `xxx.ns.cloudflare.com`). Set them
+   at your registrar, replacing whatever is there.
+4. Wait for the zone to flip to **Active** (minutes to a few hours). Verify:
+
+```sh
+dig +short NS just-bob-club.xyz          # must return the *.ns.cloudflare.com pair
+```
+
+The same thing over the API, if you'd rather not click:
+
+```sh
+export CF_API_TOKEN=<token with Account: Zone: Edit>
+export CF_ACCOUNT_ID=<your account id>
+
+curl -sX POST https://api.cloudflare.com/client/v4/zones \
+  -H "Authorization: Bearer $CF_API_TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"name\":\"just-bob-club.xyz\",\"account\":{\"id\":\"$CF_ACCOUNT_ID\"},\"type\":\"full\"}" \
+  | jq '.result.name_servers'            # then set these at the registrar
+```
+
+Leave the zone's DNS empty — cfgate creates the records. Do **not** pre-create an
+A/CNAME for the hostname you are about to route; a conflicting record makes the
+sync fail.
+
+### 2. API token for the cluster
+
+Create a token under **My Profile → API Tokens → Create Token → Custom** with:
+
+| Scope | Permission | Needed for |
+|---|---|---|
+| Account | `Cloudflare Tunnel: Edit` | creating/managing the tunnel |
+| Account | `Account Settings: Read` | account lookup (optional if you set `accountId`) |
+| Zone | `DNS: Edit` | writing the hostname records |
+
+Restrict it to the one account and the zones you intend to publish. Only the two
+Access permissions (`Access: Apps and Policies: Edit`, `Access: Service Tokens:
+Edit`) are extra, and only if you later put Cloudflare Access in front of the
+dashboard — this app is public, so skip them.
+
+### 3. Tunnel ingress (cfgate)
+
+[cfgate](https://github.com/cfgate/cfgate) turns Gateway API `HTTPRoute`s into
+Cloudflare Tunnel ingress rules plus DNS records, so publishing a service is one
+Kubernetes object and no `cloudflared` config file. Install the Gateway API CRDs
+first — some distros (k3s with traefik-crd) already ship them, most don't:
+
+```sh
+kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1 || \
+  kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
+
+kubectl apply -f https://github.com/cfgate/cfgate/releases/latest/download/install.yaml
+kubectl -n cfgate-system rollout status deploy/cfgate-controller-manager
+
+kubectl -n cfgate-system create secret generic cloudflare-credentials \
+  --from-literal=CLOUDFLARE_API_TOKEN="$CF_API_TOKEN"
+```
+
+Then the tunnel, the gateway it backs, and the zone list. `CloudflareTunnel`
+creates the tunnel in Cloudflare if it doesn't exist — there is nothing to
+pre-provision in the dashboard:
+
+```sh
+cat <<EOF | kubectl apply -f -
+apiVersion: cfgate.io/v1alpha1
+kind: CloudflareTunnel
+metadata:
+  name: osint
+  namespace: cfgate-system
+spec:
+  tunnel:
+    name: osint
+  cloudflare:
+    accountId: "$CF_ACCOUNT_ID"
+    secretRef:
+      name: cloudflare-credentials
+  cloudflared:
+    replicas: 2
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: cfgate
+spec:
+  controllerName: cfgate.io/cloudflare-tunnel-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: cloudflare-tunnel
+  namespace: cfgate-system
+  annotations:
+    cfgate.io/tunnel-ref: cfgate-system/osint
+spec:
+  gatewayClassName: cfgate
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All        # lets the osint namespace attach its route
+---
+apiVersion: cfgate.io/v1alpha1
+kind: CloudflareDNS
+metadata:
+  name: zones
+  namespace: cfgate-system
+spec:
+  tunnelRef:
+    name: osint
+    namespace: cfgate-system
+  zones:
+    - name: just-bob-club.xyz
+      proxied: true
+  defaults:
+    proxied: true
+  source:
+    gatewayRoutes:
+      enabled: true        # discover hostnames from HTTPRoutes
+EOF
+```
+
+Check it landed — every condition should be `True`, and the gateway should carry
+a `<tunnel-id>.cfargotunnel.com` address:
+
+```sh
+kubectl -n cfgate-system get cloudflaretunnel osint
+kubectl -n cfgate-system get gateway cloudflare-tunnel
+kubectl -n cfgate-system get cloudflaredns zones -o jsonpath='{.status.conditions[?(@.type=="ZonesResolved")].message}'
+```
+
+`CloudflareDNS` sitting at `Ready=Unknown / NoHostnamesDiscovered` before the
+first `HTTPRoute` exists is normal, not a failure.
+
+**Adding a zone to an existing install** — if the cluster already has a
+`CloudflareDNS` (say from another environment), append to it instead of creating
+a second one:
+
+```sh
+kubectl -n cfgate-system patch cloudflaredns <name> --type=merge \
+  -p '{"spec":{"zones":[{"name":"existing.example","proxied":true},{"name":"just-bob-club.xyz","proxied":true}]}}'
+```
+
+`spec.zones` is a full replacement — list every zone you want kept, or the
+omitted ones stop syncing.
+
+### 4. Deploy the chart
 
 ```sh
 kubectl create ns osint
 kubectl -n osint create secret generic baltic-osint-hub --from-env-file=.env
 helm install osint deploy/helm/baltic-osint-hub -n osint \
-  --set route.enabled=true --set route.hostnames[0]=just-bob-club.xyz
+  --set route.enabled=true --set 'route.hostnames[0]=just-bob-club.xyz'
 ```
 
 The secret is injected wholesale (`envFrom`), so adding a key to `.env` and
@@ -122,25 +307,116 @@ re-creating the secret is all it takes for new credentials. The chart
 overrides `DATABASE_URL` and `STATIC_DIR` from a copied local `.env` (unless
 `postgres.enabled=false`, where the secret's `DATABASE_URL` is used).
 
-`route.enabled=true` renders a Gateway API `HTTPRoute` attaching the ClusterIP
-Service to a Cloudflare Tunnel gateway (`route.gateway`, default
-`cfgate-system/cloudflare-tunnel`). The [cfgate](https://github.com/inherent-design/cfgate)
-controller then adds the tunnel ingress rule and the proxied `CNAME` to
-`<tunnel-id>.cfargotunnel.com` — no per-host tunnel config by hand. The
-hostname's zone must be listed in the cluster's `CloudflareDNS` resource, e.g.:
+`route.enabled=true` renders the `HTTPRoute` attaching the ClusterIP Service to
+`route.gateway` (default `cfgate-system/cloudflare-tunnel`). cfgate then adds the
+tunnel ingress rule and the proxied `CNAME` to `<tunnel-id>.cfargotunnel.com`.
+Leave it `false` to expose the app some other way — the Service is reachable
+in-cluster at `http://osint-baltic-osint-hub.osint.svc:8080`.
+
+The chart ships a single-node Postgres (`postgres.enabled=true`, 5Gi PVC). For an
+external database set `postgres.enabled=false` and add `DATABASE_URL` to the
+secret.
+
+Verify:
 
 ```sh
-kubectl -n cfgate-system patch cloudflaredns faros-sh --type=merge \
-  -p '{"spec":{"zones":[{"name":"faros.sh","proxied":true},{"name":"just-bob-club.xyz","proxied":true}]}}'
+kubectl -n osint rollout status deploy/osint-baltic-osint-hub
+kubectl -n osint get httproute osint-baltic-osint-hub \
+  -o jsonpath='{.status.parents[0].conditions[*].type}{"\n"}'   # Accepted ResolvedRefs
+kubectl -n cfgate-system get cloudflaredns zones \
+  -o jsonpath='{range .status.records[*]}{.hostname}{"\t"}{.status}{"\n"}{end}'
+curl -sI https://just-bob-club.xyz/healthz
 ```
 
-Leave `route.enabled=false` to expose it some other way — the Service is
-reachable at `http://osint-baltic-osint-hub.osint.svc:8080`.
+A brand-new hostname can serve TLS handshake failures (SSL alert 40) for a few
+minutes. The apex and one level of subdomain are covered by Universal SSL; a
+*second*-level name (`osint.sub.example.com`) is outside that wildcard and only
+works once Total TLS issues a per-hostname certificate.
 
-The chart ships a single-node Postgres (`postgres.enabled=true`, 5Gi PVC). For
-an external database set `postgres.enabled=false` and add `DATABASE_URL`
-to the secret. Images build to `ghcr.io/mjudeikis/baltic-osint-hub` via GitHub
-Actions on push to `main`.
+### 5. Rolling out a new image
+
+CI builds on every push to `main` and pushes two tags to
+`ghcr.io/mjudeikis/baltic-osint-hub`: `latest` and the commit `:<sha>`.
+
+The chart defaults to `image.tag=latest` with `pullPolicy: Always`, so a rollout
+is a restart — Helm has nothing to change:
+
+```sh
+kubectl -n osint rollout restart deploy/osint-baltic-osint-hub
+kubectl -n osint rollout status deploy/osint-baltic-osint-hub
+```
+
+The collector `CronJob` needs no restart; its next run (hourly) pulls `latest`
+by itself. To pick the new image up immediately, trigger a run by hand — see
+[Ad-hoc collector run](#6-ad-hoc-collector-run).
+
+Pin an exact build instead — preferable for anything you care about, since it
+makes the running version visible and rollback a one-liner:
+
+```sh
+helm upgrade osint deploy/helm/baltic-osint-hub -n osint --reuse-values \
+  --set image.tag=$(git rev-parse HEAD)
+```
+
+Chart or values changed:
+
+```sh
+helm upgrade osint deploy/helm/baltic-osint-hub -n osint \
+  --set route.enabled=true --set 'route.hostnames[0]=just-bob-club.xyz'
+
+helm -n osint history osint          # then: helm -n osint rollback osint <rev>
+```
+
+Watch what actually landed:
+
+```sh
+kubectl -n osint get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}'
+kubectl -n osint logs -l app.kubernetes.io/component=server --tail=50
+```
+
+Migrations are embedded and applied at startup by whichever binary connects
+first (`internal/store/store.go`, tracked in `schema_migrations`), so a rollout
+applies them. They are forward-only: rolling back to an image older than an
+applied migration is not supported.
+
+### 6. Ad-hoc collector run
+
+The collector only runs on its schedule (hourly by default). To force a
+fetch+classify cycle now — after a deploy, after adding a source, or to pick up
+a freshly pushed image without waiting — clone the `CronJob` into a one-off
+`Job`:
+
+```sh
+kubectl create job <new-job-name> --from=cronjob/<existing-cronjob-name> -n <namespace>
+```
+
+For this chart, with release `osint` in namespace `osint`:
+
+```sh
+kubectl -n osint create job collector-manual-$(date +%s) \
+  --from=cronjob/osint-baltic-osint-hub-collector
+
+kubectl -n osint get jobs -l job-name --sort-by=.metadata.creationTimestamp
+kubectl -n osint logs -f job/<job-name>
+```
+
+The Job copies the CronJob's pod template as it exists *at creation time*, so it
+picks up the current `image.tag`, the current `baltic-osint-hub` secret, and
+`pullPolicy: Always` — i.e. it pulls the newest `latest`. The name must be unique
+and the timestamp suffix handles that; a plain `collector-manual` fails the
+second time with `AlreadyExists`.
+
+Safe to run alongside the scheduled job: the collector dedupes by URL and
+normalized-title hash, and per-source fetch intervals are enforced internally,
+so an extra run mostly no-ops rather than re-fetching everything. It does spend
+OpenAI credit on whatever it finds new, bounded by `MAX_ENRICH_PER_RUN`.
+
+Clean up finished manual jobs (the CronJob's own history is pruned
+automatically):
+
+```sh
+kubectl -n osint delete job -l job-name --field-selector status.successful=1
+```
 
 ## Disclaimer
 

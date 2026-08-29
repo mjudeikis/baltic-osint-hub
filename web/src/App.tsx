@@ -121,7 +121,7 @@ export default function App() {
         <div className="card">
           <h2>Sources &amp; methodology</h2>
           <p>
-            Items are collected every 30 minutes from public RSS feeds (LRT, ERR, LSM,
+            Items are collected hourly from public RSS feeds (LRT, ERR, LSM,
             Notes from Poland, EUvsDisinfo, CERT.PL, CEPA, Jamestown, ICDS, Warsaw
             Institute, Lithuanian/Latvian MoD, Estonian Defence Forces), the GDELT
             news index, public Telegram channels

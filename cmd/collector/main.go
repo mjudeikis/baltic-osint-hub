@@ -90,41 +90,56 @@ func runLayers(ctx context.Context, log *slog.Logger, db *store.Store, cfg *conf
 			log.Error("layer", "name", name, "err", err)
 		}
 	}
-	run("layer:gpsjam", func() error {
+
+	// Each layer carries its own minimum interval so the cron schedule and the
+	// upstream budgets stay independent: making the CronJob more frequent must
+	// not multiply calls to a rate-limited service. The gate keys off the last
+	// *successful* run, so a failing layer keeps retrying every invocation.
+	gated := func(name string, minInterval time.Duration, fn func() error) {
+		if recentlyRan(ctx, db, name, minInterval) {
+			log.Info("layer skipped; ran recently", "name", name, "interval", minInterval.String())
+			return
+		}
+		run(name, fn)
+	}
+
+	// gpsjam publishes a day behind and stores per day, so a handful of
+	// attempts is enough to catch publication.
+	gated("layer:gpsjam", 6*time.Hour, func() error {
 		return (&layers.Gpsjam{Client: client}).Run(ctx, db, log)
 	})
-	run("layer:opensky", func() error {
+	// One snapshot per border box per run; aircraft transit a box in minutes,
+	// so sampling more often than this buys little against the credit budget.
+	gated("layer:opensky", 30*time.Minute, func() error {
 		return (&layers.OpenSky{
 			ClientID:     cfg.OpenSkyClientID,
 			ClientSecret: cfg.OpenSkyClientSecret,
 			Client:       client,
 		}).Run(ctx, db, log)
 	})
+	// VIIRS has roughly two overpasses a day and NRT data lands within hours.
 	if cfg.FIRMSMapKey != "" {
-		run("layer:firms", func() error {
+		gated("layer:firms", 2*time.Hour, func() error {
 			return (&layers.FIRMS{MapKey: cfg.FIRMSMapKey, Client: client}).Run(ctx, db, log)
 		})
 	} else {
 		log.Warn("FIRMS_MAP_KEY not set; skipping thermal layer")
 	}
 
-	// SAR change detection is the expensive layer (one Statistical API call
-	// per AOI against a finite processing-unit budget) and Sentinel-1's
-	// revisit is measured in days, so run it at most daily.
-	switch {
-	case cfg.CopernicusClientID == "" || cfg.CopernicusClientSecret == "":
+	// SAR is the expensive layer (one Statistical API call per AOI against a
+	// finite processing-unit budget) and Sentinel-1's revisit is measured in
+	// days, so run it at most daily.
+	if cfg.CopernicusClientID == "" || cfg.CopernicusClientSecret == "" {
 		log.Warn("COPERNICUS_CLIENT_ID/SECRET not set; skipping SAR change detection")
-	case recentlyRan(ctx, db, "layer:sentinel", 20*time.Hour):
-		log.Info("sar layer ran recently; skipping")
-	default:
-		run("layer:sentinel", func() error {
-			return (&layers.Sentinel{
-				ClientID:     cfg.CopernicusClientID,
-				ClientSecret: cfg.CopernicusClientSecret,
-				Client:       client,
-			}).Run(ctx, db, log)
-		})
+		return
 	}
+	gated("layer:sentinel", 20*time.Hour, func() error {
+		return (&layers.Sentinel{
+			ClientID:     cfg.CopernicusClientID,
+			ClientSecret: cfg.CopernicusClientSecret,
+			Client:       client,
+		}).Run(ctx, db, log)
+	})
 }
 
 func recentlyRan(ctx context.Context, db *store.Store, name string, within time.Duration) bool {

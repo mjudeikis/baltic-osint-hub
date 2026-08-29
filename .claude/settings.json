@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(helm lint *)"
+      "Bash(helm lint *)",
+      "Bash(awk 'length > 88 {printf \"%d: %d chars\\\\n\", NR, length}' README.md)",
+      "Bash(perl -0pi -e \"s/--set route\\\\.hostnames\\\\[0\\\\]=just-bob-club\\\\.xyz/--set 'route.hostnames[0]=just-bob-club.xyz'/g\" README.md)"
     ]
   }
 }

@@ -13,8 +13,10 @@ server:
       memory: 256Mi
 
 collector:
-  # Every 30 minutes; per-source intervals are enforced internally.
-  schedule: "*/30 * * * *"
+  # Hourly. Per-source and per-layer minimum intervals are enforced inside the
+  # collector, so changing this only shifts worst-case staleness — it does not
+  # multiply calls to rate-limited upstreams.
+  schedule: "0 * * * *"
   enrichModel: gpt-5-mini
   maxEnrichPerRun: "300"
   resources:
