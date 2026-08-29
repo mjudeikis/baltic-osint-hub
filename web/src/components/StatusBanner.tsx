@@ -72,8 +72,41 @@ export default function StatusBanner({ sources }: { sources: SourceStatus[] }) {
         </svg>
         source
       </a>
+      {/* Pre-filled with what the reader was looking at, so a misclassified
+          item or a wrong site can be reported without retyping the context. */}
+      <a
+        className="banner-issue"
+        href={issueURL(lastRun, failing.length, sources.length)}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Report a misclassified item, a wrong site, or anything that looks off"
+      >
+        ⚑ report an issue
+      </a>
     </div>
   );
+}
+
+// Classification is automated and will get things wrong; the fastest way to
+// improve it is to make reporting an error trivial. The body carries the
+// context a maintainer would otherwise have to ask for.
+function issueURL(lastRun: Date | null, failing: number, total: number): string {
+  const body = [
+    "<!-- What looks wrong? A misclassified item, a wrong tone, a site in the",
+    "     wrong place, or a source that should be added or removed. -->",
+    "",
+    "**What I saw:**",
+    "",
+    "**What I expected:**",
+    "",
+    "---",
+    `Page: ${typeof location !== "undefined" ? location.href : ""}`,
+    `Last sync: ${lastRun ? lastRun.toISOString() : "unknown"}`,
+    `Sources: ${total - failing}/${total} healthy`,
+    `Reported: ${new Date().toISOString()}`,
+  ].join("\n");
+  const q = new URLSearchParams({ title: "", body });
+  return `https://github.com/mjudeikis/baltic-osint-hub/issues/new?${q}`;
 }
 
 function relative(ms: number): string {

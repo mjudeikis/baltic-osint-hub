@@ -23,6 +23,7 @@ export interface Incident {
   countries: string[];
   severity: number;
   tone: string;
+  place: string;
   credibility: string; // institutional | independent | state-controlled
   summary: string;
   lat?: number;

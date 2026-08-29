@@ -41,6 +41,7 @@ type Incident struct {
 	Countries  []string  `json:"countries"`
 	Severity   int       `json:"severity"`
 	Tone       string    `json:"tone"`
+	Place      string    `json:"place"`
 	SummaryEN  string    `json:"summary"`
 	Lat        *float64  `json:"lat,omitempty"`
 	Lon        *float64  `json:"lon,omitempty"`
@@ -178,10 +179,10 @@ func (s *Store) SetItemStatus(ctx context.Context, id int64, status string) erro
 
 func (s *Store) InsertIncident(ctx context.Context, inc *Incident) error {
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO incidents (raw_item_id, category, countries, severity, tone, summary_en, lat, lon, confidence, occurred_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		`INSERT INTO incidents (raw_item_id, category, countries, severity, tone, place, summary_en, lat, lon, confidence, occurred_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		 ON CONFLICT (raw_item_id) DO NOTHING`,
-		inc.RawItemID, inc.Category, inc.Countries, inc.Severity, inc.Tone, inc.SummaryEN,
+		inc.RawItemID, inc.Category, inc.Countries, inc.Severity, inc.Tone, inc.Place, inc.SummaryEN,
 		inc.Lat, inc.Lon, inc.Confidence, inc.OccurredAt)
 	return err
 }
@@ -218,7 +219,7 @@ type IncidentFilter struct {
 }
 
 func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident, error) {
-	q := `SELECT i.id, i.raw_item_id, i.category, i.countries, i.severity, i.tone, i.summary_en,
+	q := `SELECT i.id, i.raw_item_id, i.category, i.countries, i.severity, i.tone, COALESCE(i.place, ''), i.summary_en,
 	             i.lat, i.lon, i.confidence, i.occurred_at, r.source, r.url, r.title
 	      FROM incidents i JOIN raw_items r ON r.id = i.raw_item_id WHERE 1=1`
 	args := []any{}
@@ -257,7 +258,7 @@ func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident
 	for rows.Next() {
 		var inc Incident
 		if err := rows.Scan(&inc.ID, &inc.RawItemID, &inc.Category, &inc.Countries, &inc.Severity,
-			&inc.Tone, &inc.SummaryEN, &inc.Lat, &inc.Lon, &inc.Confidence, &inc.OccurredAt,
+			&inc.Tone, &inc.Place, &inc.SummaryEN, &inc.Lat, &inc.Lon, &inc.Confidence, &inc.OccurredAt,
 			&inc.Source, &inc.URL, &inc.Title); err != nil {
 			return nil, err
 		}

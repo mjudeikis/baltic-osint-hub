@@ -58,10 +58,12 @@ service:
 # to the cfgate Cloudflare Tunnel gateway, which creates the proxied CNAME to
 # <tunnel-id>.cfargotunnel.com automatically — the hostname's zone must be
 # listed in the cfgate CloudflareDNS resource.
+# osintbaltic.com is the project's public domain; override hostnames when
+# deploying your own instance.
 route:
   enabled: false
   hostnames:
-    - just-bob-club.xyz
+    - osintbaltic.com
   gateway:
     name: cloudflare-tunnel
     namespace: cfgate-system

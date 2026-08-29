@@ -100,11 +100,9 @@ export default function IncidentMap({
         border: "2px solid var(--surface-1)",
         cursor: "pointer",
       });
-      // Keep a marker click from also reaching the canvas layers below
-      // (which would open a second popup for the jamming cell).
-      dot.addEventListener("click", (ev) => ev.stopPropagation());
       const popup = new maplibregl.Popup({ offset: 10, maxWidth: "280px" }).setHTML(
         `<strong>${esc(inc.title)}</strong><br/>` +
+          (inc.place ? `📍 ${esc(inc.place)}<br/>` : "") +
           `${categoryLabel(inc.category)} · severity ${inc.severity} (${SEVERITY_LABELS[inc.severity]})<br/>` +
           `<a href="${esc(inc.url)}" target="_blank" rel="noopener noreferrer">source ↗</a>`,
       );
@@ -435,6 +433,10 @@ function bindPopup(
   html: (props: Record<string, any>) => string,
 ) {
   m.on("click", layerId, (e) => {
+    // A marker sits above the canvas; without this the same click would also
+    // open the underlying cell's popup.
+    const target = e.originalEvent?.target as Element | null;
+    if (target?.closest?.(".maplibregl-marker")) return;
     const f = e.features?.[0];
     if (!f) return;
     new maplibregl.Popup({ maxWidth: "280px" })

@@ -43,11 +43,14 @@ func (s *Server) Register(mux *http.ServeMux) {
 	})
 }
 
-// writeJSON sends the payload with a public cache header; the dashboard sits
-// behind Cloudflare, which absorbs most traffic on these responses.
+// writeJSON sends the payload with a short public cache window. It is
+// deliberately short: the edge still absorbs traffic spikes, but a collector
+// run that changes the data cannot leave a reader looking at a stale — and
+// possibly falsely reassuring — reading for long. A five-minute window once
+// showed "Calm, 0 incidents" while the API was returning 68.
 func (s *Server) writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", "public, max-age=60")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		s.log.Error("encode", "err", err)
 	}

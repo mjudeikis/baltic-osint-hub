@@ -1,5 +1,7 @@
 # Baltic OSINT Hub
 
+**Live: [osintbaltic.com](https://osintbaltic.com)**
+
 Public dashboard tracking open-source intelligence on hybrid threats against
 Lithuania, Latvia, Estonia, and Poland: sabotage, GPS jamming, cyberattacks,
 disinformation, airspace and border incidents, espionage, and military activity.
@@ -177,6 +179,10 @@ Requirements: a Kubernetes cluster with a default StorageClass (k3s, kind with
 the local-path provisioner, any managed cluster), `kubectl`, `helm` 3, and a
 domain you control.
 
+The public instance runs on **`osintbaltic.com`**, which is what the chart's
+`route.hostnames` defaults to and what every command below uses. Substitute your
+own domain throughout if you are deploying your own instance.
+
 ### 1. Cloudflare zone
 
 A *zone* is a domain Cloudflare serves DNS for. You need one before anything
@@ -189,7 +195,7 @@ else; the tunnel controller writes records into it.
 4. Wait for the zone to flip to **Active** (minutes to a few hours). Verify:
 
 ```sh
-dig +short NS just-bob-club.xyz          # must return the *.ns.cloudflare.com pair
+dig +short NS osintbaltic.com          # must return the *.ns.cloudflare.com pair
 ```
 
 The same thing over the API, if you'd rather not click:
@@ -200,7 +206,7 @@ export CF_ACCOUNT_ID=<your account id>
 
 curl -sX POST https://api.cloudflare.com/client/v4/zones \
   -H "Authorization: Bearer $CF_API_TOKEN" -H 'Content-Type: application/json' \
-  -d "{\"name\":\"just-bob-club.xyz\",\"account\":{\"id\":\"$CF_ACCOUNT_ID\"},\"type\":\"full\"}" \
+  -d "{\"name\":\"osintbaltic.com\",\"account\":{\"id\":\"$CF_ACCOUNT_ID\"},\"type\":\"full\"}" \
   | jq '.result.name_servers'            # then set these at the registrar
 ```
 
@@ -296,7 +302,7 @@ spec:
     name: osint
     namespace: cfgate-system
   zones:
-    - name: just-bob-club.xyz
+    - name: osintbaltic.com
       proxied: true
   defaults:
     proxied: true
@@ -324,7 +330,7 @@ a second one:
 
 ```sh
 kubectl -n cfgate-system patch cloudflaredns <name> --type=merge \
-  -p '{"spec":{"zones":[{"name":"existing.example","proxied":true},{"name":"just-bob-club.xyz","proxied":true}]}}'
+  -p '{"spec":{"zones":[{"name":"existing.example","proxied":true},{"name":"osintbaltic.com","proxied":true}]}}'
 ```
 
 `spec.zones` is a full replacement — list every zone you want kept, or the
@@ -336,7 +342,7 @@ omitted ones stop syncing.
 kubectl create ns osint
 kubectl -n osint create secret generic baltic-osint-hub --from-env-file=.env
 helm install osint deploy/helm/baltic-osint-hub -n osint \
-  --set route.enabled=true --set 'route.hostnames[0]=just-bob-club.xyz'
+  --set route.enabled=true --set 'route.hostnames[0]=osintbaltic.com'
 ```
 
 The secret is injected wholesale (`envFrom`), so adding a key to `.env` and
@@ -347,6 +353,8 @@ overrides `DATABASE_URL` and `STATIC_DIR` from a copied local `.env` (unless
 `route.enabled=true` renders the `HTTPRoute` attaching the ClusterIP Service to
 `route.gateway` (default `cfgate-system/cloudflare-tunnel`). cfgate then adds the
 tunnel ingress rule and the proxied `CNAME` to `<tunnel-id>.cfargotunnel.com`.
+`route.hostnames` already defaults to `osintbaltic.com`, so the `--set` above is
+only needed when publishing under a different domain.
 Leave it `false` to expose the app some other way — the Service is reachable
 in-cluster at `http://osint-baltic-osint-hub.osint.svc:8080`.
 
@@ -362,7 +370,7 @@ kubectl -n osint get httproute osint-baltic-osint-hub \
   -o jsonpath='{.status.parents[0].conditions[*].type}{"\n"}'   # Accepted ResolvedRefs
 kubectl -n cfgate-system get cloudflaredns zones \
   -o jsonpath='{range .status.records[*]}{.hostname}{"\t"}{.status}{"\n"}{end}'
-curl -sI https://just-bob-club.xyz/healthz
+curl -sI https://osintbaltic.com/healthz
 ```
 
 A brand-new hostname can serve TLS handshake failures (SSL alert 40) for a few
@@ -399,7 +407,7 @@ Chart or values changed:
 
 ```sh
 helm upgrade osint deploy/helm/baltic-osint-hub -n osint \
-  --set route.enabled=true --set 'route.hostnames[0]=just-bob-club.xyz'
+  --set route.enabled=true --set 'route.hostnames[0]=osintbaltic.com'
 
 helm -n osint history osint          # then: helm -n osint rollback osint <rev>
 ```

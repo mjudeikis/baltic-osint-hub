@@ -777,3 +777,20 @@ footer.site td {
 .tile ul li {
   padding: 0;
 }
+
+.banner-issue {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.banner-issue:hover {
+  color: var(--status-warning);
+}
+@media (max-width: 700px) {
+  .banner-issue {
+    margin-left: 0;
+  }
+}

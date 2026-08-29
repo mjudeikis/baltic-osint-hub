@@ -39,6 +39,7 @@ type Verdict struct {
 	Countries []string `json:"countries"`
 	Severity  int      `json:"severity"`
 	Tone      string   `json:"tone"`
+	Place     string   `json:"place"`
 	Summary   string   `json:"summary"`
 	Lat       *float64 `json:"lat"`
 	Lon       *float64 `json:"lon"`
@@ -83,10 +84,18 @@ Tone — judge every item from the perspective of the security of Lithuania, Lat
 
 Tone and severity are independent. A large NATO reinforcement is severity 3-4 and "positive". A successful arson attack is severity 4 and "negative". Do not mark something "negative" merely because it concerns a threat — an article about catching a saboteur is "positive" even though the subject is sabotage. Most defence-procurement and exercise news is "positive" or "neutral", not "negative".
 
-Items may be in Lithuanian, Latvian, Estonian, Polish, Russian, or English. Always write the summary in English, one to two factual sentences. If the text names a specific location, give approximate lat/lon; otherwise null.
+Items may be in Lithuanian, Latvian, Estonian, Polish, Russian, or English. Always write the summary in English, one to two factual sentences.
+
+Location: give lat/lon whenever the item names ANY place you can place on a map — a city or town, a district, an airport or port, a military base, a border crossing, a named stretch of sea, or a region. Use the centre of that place; approximate is fine and expected. Also give "place" as the name you geocoded, so a reader can tell what the pin refers to.
+- Named settlement or facility (Vilnius, Narva, Baltiysk, Šiauliai air base) → its coordinates.
+- A region or district (Utena county, Kaliningrad oblast) → the centre of that region.
+- A sea area (Gulf of Finland, Baltic Sea near Gotland) → a representative point in it.
+- Only a country and nothing more specific → null. Do NOT fall back to the capital, because that would put a false pin on a real city.
+- No place at all (general analysis, policy commentary) → null.
+Most items that describe a real event do name a place; use it rather than defaulting to null.
 
 Reply with ONLY a JSON array, one object per item:
-[{"id": <item id>, "relevant": true|false, "category": "<one of the categories>", "countries": ["LT"|"LV"|"EE"|"PL", ...], "severity": 1-5, "tone": "positive"|"negative"|"neutral", "summary": "<english summary>", "lat": null|number, "lon": null|number}]
+[{"id": <item id>, "relevant": true|false, "category": "<one of the categories>", "countries": ["LT"|"LV"|"EE"|"PL", ...], "severity": 1-5, "tone": "positive"|"negative"|"neutral", "summary": "<english summary>", "place": "<name you geocoded, or null>", "lat": null|number, "lon": null|number}]
 For irrelevant items only id and relevant=false are needed.`
 
 // ClassifyBatch sends up to ~20 items and returns verdicts keyed by item ID.
