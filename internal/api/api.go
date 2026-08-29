@@ -12,6 +12,7 @@ import (
 	"github.com/mjudeikis/baltic-osint-hub/internal/enrich"
 	"github.com/mjudeikis/baltic-osint-hub/internal/layers"
 	"github.com/mjudeikis/baltic-osint-hub/internal/posture"
+	"github.com/mjudeikis/baltic-osint-hub/internal/sources"
 	"github.com/mjudeikis/baltic-osint-hub/internal/store"
 )
 
@@ -77,7 +78,19 @@ func (s *Server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	s.writeJSON(w, incidents)
+	// Classify each item's source so the UI can mark adversary messaging
+	// rather than rendering it like national broadcasting.
+	out := make([]incidentOut, 0, len(incidents))
+	for _, inc := range incidents {
+		out = append(out, incidentOut{Incident: inc, Credibility: sources.Credibility(inc.Source)})
+	}
+	s.writeJSON(w, out)
+}
+
+// incidentOut adds the source's credibility class to the stored incident.
+type incidentOut struct {
+	store.Incident
+	Credibility string `json:"credibility"`
 }
 
 func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +130,11 @@ func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 		Negative:           byTone[enrich.ToneNegative],
 		NegativeBySeverity: sev,
 	})
+	// "Is this week unusual?" — a bare count invites the reader to assume the
+	// worst, so publish the comparison alongside it.
+	if history, err := s.db.WeeklyAdverseHistory(r.Context(), 12); err == nil {
+		reading = reading.WithHistory(history)
+	}
 	s.writeJSON(w, reading)
 }
 

@@ -24,6 +24,7 @@ import PostureBanner from "./components/PostureBanner";
 import Section from "./components/Section";
 import SideNav, { NavItem } from "./components/SideNav";
 import SourcesPanel from "./components/SourcesPanel";
+import Preparedness from "./components/Preparedness";
 
 const DAY_PRESETS = [7, 30, 90] as const;
 
@@ -33,6 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "map", label: "Situation map" },
   { id: "satellite", label: "Satellite" },
   { id: "feed", label: "Incident feed" },
+  { id: "prepare", label: "How to prepare" },
   { id: "sources", label: "Sources" },
 ];
 
@@ -168,6 +170,10 @@ export default function App() {
             aside={`${incidents.length} shown${category ? ` · ${categoryLabel(category)}` : ""}`}
           >
             <Feed incidents={incidents} />
+          </Section>
+
+          <Section id="prepare" title="How to prepare">
+            <Preparedness posture={posture} />
           </Section>
 
           <Section id="sources" title="Sources &amp; methodology" defaultOpen={false}>

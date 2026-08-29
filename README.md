@@ -73,6 +73,18 @@ the next invocation.
 LLM spend tracks item volume, not schedule: deduplication means each item is
 classified exactly once regardless of how often the collector runs.
 
+### Source credibility
+
+Russian and Belarusian state outlets (TASS, RIA, Interfax, Zvezda, BelTA,
+Rybar, Baltnews, the Russian MoD channel) are ingested **deliberately** — the
+narrative aimed at the region is itself intelligence. But they are never
+presented as reporting: every item carries a credibility class
+(`institutional` / `independent` / `state-controlled`), state-controlled items
+are visibly marked in the feed, and they are **excluded from the posture
+calculation** so an adversary cannot move the dashboard's own threat gauge.
+Exiled Russian outlets (Meduza, Astra, The Insider, Mediazona) are classified
+independent, not state-controlled — the distinction is the point of the field.
+
 ### Tone and regional posture
 
 Every classified item carries a **tone** as well as a severity — favourable,
@@ -87,6 +99,12 @@ down). Levels 4 and 5 are set by absolute adverse severity and cannot be
 softened by good news, while a week with more favourable than adverse
 developments steps the middle of the scale down one. The banner always shows
 the counts it was derived from, so the reading is auditable rather than a vibe.
+
+The banner also answers **"is this week unusual?"** against the median of the
+trailing twelve weeks, and the dashboard links each country's official civil
+preparedness guidance (LT72, 72 stundas, kriis.ee, RCB). Reporting a threat
+without telling the reader what to do with it is how a monitor becomes a
+source of anxiety rather than readiness.
 
 This exists because a threat-only feed reads as uniformly dire even in an
 ordinary week — the first live reading was 29 favourable developments against

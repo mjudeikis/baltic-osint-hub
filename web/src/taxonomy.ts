@@ -77,6 +77,19 @@ export const POSTURE_LEVELS: { level: number; cssVar: string }[] = [
 export const postureColor = (level: number): string =>
   cssColor(POSTURE_LEVELS.find((p) => p.level === level)?.cssVar ?? "--text-muted");
 
+// Source credibility. State-controlled outlets are ingested deliberately so
+// the narrative aimed at the region is visible, but they must never be
+// presented like national broadcasting.
+export const CREDIBILITY: Record<string, { label: string; short: string; cssVar: string }> = {
+  institutional: { label: "Official or public-service source", short: "official", cssVar: "--text-muted" },
+  independent: { label: "Independent reporting", short: "independent", cssVar: "--text-muted" },
+  "state-controlled": {
+    label: "Russian or Belarusian state-controlled outlet — this is adversary messaging, not verified reporting",
+    short: "state media",
+    cssVar: "--status-warning",
+  },
+};
+
 export const SEVERITY_LABELS: Record<number, string> = {
   1: "Analysis",
   2: "Minor",

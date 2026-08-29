@@ -346,6 +346,38 @@ func (s *Store) Summary(ctx context.Context) ([]SummaryCell, error) {
 	return cells, rows.Err()
 }
 
+// StateControlledSources is set at startup from the sources package; kept as
+// a plain slice so the query layer needs no dependency on it.
+var StateControlledSources []string
+
+// WeeklyAdverseHistory returns adverse-incident counts per ISO week over the
+// trailing `weeks`, oldest first, so the dashboard can answer "is this week
+// unusual?" rather than leaving a bare number to be read as alarming.
+func (s *Store) WeeklyAdverseHistory(ctx context.Context, weeks int) ([]int, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT date_trunc('week', occurred_at) AS wk, count(*)
+		FROM incidents i JOIN raw_items r ON r.id = i.raw_item_id
+		WHERE i.tone = 'negative'
+		  AND i.occurred_at >= date_trunc('week', now()) - make_interval(weeks => $1)
+		  AND i.occurred_at < date_trunc('week', now())
+		  AND NOT (r.source = ANY($2))
+		GROUP BY wk ORDER BY wk`, weeks, StateControlledSources)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []int{}
+	for rows.Next() {
+		var wk time.Time
+		var n int
+		if err := rows.Scan(&wk, &n); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
 // ToneCounts returns, for the last `days`, how many incidents carried each
 // tone plus the severity histogram of the adverse ones. Optionally scoped to
 // one country.
@@ -355,14 +387,20 @@ func (s *Store) ToneCounts(ctx context.Context, days int, country string) (map[s
 
 	// make_interval keeps `days` a genuine int parameter; string-concatenating
 	// it leaves pgx unable to infer the type.
-	q := `SELECT tone, severity, count(*) FROM incidents
-	      WHERE occurred_at >= now() - make_interval(days => $1)`
-	args := []any{days}
+	//
+	// State-controlled sources are excluded outright: we monitor adversary
+	// messaging, but letting it feed the threat gauge would hand an adversary
+	// direct control of our own reading.
+	q := `SELECT i.tone, i.severity, count(*)
+	      FROM incidents i JOIN raw_items r ON r.id = i.raw_item_id
+	      WHERE i.occurred_at >= now() - make_interval(days => $1)
+	        AND NOT (r.source = ANY($2))`
+	args := []any{days, StateControlledSources}
 	if country != "" {
-		q += ` AND $2 = ANY(countries)`
+		q += ` AND $3 = ANY(i.countries)`
 		args = append(args, country)
 	}
-	q += ` GROUP BY tone, severity`
+	q += ` GROUP BY i.tone, i.severity`
 
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {

@@ -4,6 +4,8 @@ export interface Posture {
   headline: string;
   explanation: string;
   balance: number;
+  context: string;
+  typical_week: number;
   counts: {
     positive: number;
     neutral: number;
@@ -21,6 +23,7 @@ export interface Incident {
   countries: string[];
   severity: number;
   tone: string;
+  credibility: string; // institutional | independent | state-controlled
   summary: string;
   lat?: number;
   lon?: number;

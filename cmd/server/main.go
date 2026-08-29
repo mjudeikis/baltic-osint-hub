@@ -15,6 +15,7 @@ import (
 	"github.com/mjudeikis/baltic-osint-hub/internal/api"
 	"github.com/mjudeikis/baltic-osint-hub/internal/config"
 	"github.com/mjudeikis/baltic-osint-hub/internal/layers"
+	"github.com/mjudeikis/baltic-osint-hub/internal/sources"
 	"github.com/mjudeikis/baltic-osint-hub/internal/store"
 )
 
@@ -34,6 +35,10 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	// State-controlled outlets are monitored but must never move the
+	// posture reading; the store filters them out of tone counts.
+	store.StateControlledSources = sources.StateControlledList()
 
 	// AIS watch is a persistent stream, so it lives in the server process
 	// rather than the collector cron.

@@ -15,6 +15,8 @@ const OVERLAYS = [
   { key: "air", label: "Air activity", cssVar: "--series-7" },
   { key: "sea", label: "Sea activity", cssVar: "--series-6" },
   { key: "sites", label: "Radar sites", cssVar: "--series-4" },
+  { key: "cables", label: "Cables & pipelines", cssVar: "--series-3" },
+  { key: "territory", label: "RU / BY territory", cssVar: "--series-8" },
 ] as const;
 type OverlayKey = (typeof OVERLAYS)[number]["key"];
 
@@ -42,6 +44,8 @@ export default function IncidentMap({
     air: true,
     sea: true,
     sites: true,
+    cables: true,
+    territory: true,
   });
   const [showIncidents, setShowIncidents] = useState(true);
 
@@ -112,6 +116,67 @@ export default function IncidentMap({
       );
     }
   }, [incidents, showIncidents]);
+
+  // Static geographic context, loaded once and drawn beneath the data: which
+  // side of the line a thing is on, and what infrastructure runs under the
+  // sea. Without these an incident in open water has nothing to mean.
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !loaded) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [land, cables] = await Promise.all([
+          fetch("/adversary-landmass.json").then((r) => r.json()),
+          fetch("/baltic-cables.json").then((r) => r.json()),
+        ]);
+        if (cancelled || !map.current) return;
+
+        if (!m.getSource("territory")) {
+          m.addSource("territory", { type: "geojson", data: land });
+          // Beneath every data layer: context, not content.
+          const first = m.getLayersOrder()[1];
+          m.addLayer(
+            {
+              id: "territory",
+              type: "fill",
+              source: "territory",
+              paint: {
+                "fill-color": cssColor("--series-8"),
+                "fill-opacity": 0.1,
+                "fill-outline-color": cssColor("--series-8"),
+              },
+            },
+            first,
+          );
+        }
+        if (!m.getSource("cables")) {
+          m.addSource("cables", { type: "geojson", data: cables });
+          m.addLayer({
+            id: "cables",
+            type: "line",
+            source: "cables",
+            paint: {
+              "line-color": cssColor("--series-3"),
+              "line-width": 1.5,
+              "line-opacity": 0.75,
+              "line-dasharray": [3, 2],
+            },
+          });
+          bindPopup(m, "cables", (p) =>
+            `<strong>${esc(p.name)}</strong><br/>submarine cable or interconnector`,
+          );
+        }
+      } catch {
+        /* context layers are optional; the map is useful without them */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loaded]);
 
   // Canvas overlays.
   useEffect(() => {
@@ -308,6 +373,8 @@ export default function IncidentMap({
     air: layers?.air.length ?? 0,
     sea: layers?.sea.length ?? 0,
     sites: layers?.sar.length ?? 0,
+    cables: 0,
+    territory: 0,
   };
 
   return (
@@ -324,7 +391,8 @@ export default function IncidentMap({
             onClick={() => setVisible((v) => ({ ...v, [o.key]: !v[o.key] }))}
           >
             <span className="swatch" style={{ background: cssColor(o.cssVar), borderRadius: o.key === "jamming" ? 3 : "50%", display: "inline-block", width: 10, height: 10, marginRight: 5 }} />
-            {o.label} ({counts[o.key]})
+            {o.label}
+            {o.key !== "cables" && o.key !== "territory" && ` (${counts[o.key]})`}
           </button>
         ))}
       </div>

@@ -1,6 +1,9 @@
 package posture
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func sev(counts ...int) [6]int {
 	var s [6]int
@@ -98,3 +101,33 @@ func TestEveryLevelHasAName(t *testing.T) {
 		}
 	}
 }
+
+func TestHistoryContext(t *testing.T) {
+	// A quiet-ish week against a busier norm should read as reassuring, not
+	// alarming — the whole reason the comparison exists.
+	r := Evaluate(Counts{Negative: 2, Positive: 5, NegativeBySeverity: sev(0, 2)}).
+		WithHistory([]int{6, 8, 7, 9, 6, 7})
+	if r.TypicalWeek != 7 {
+		t.Errorf("typical week = %d, want 7", r.TypicalWeek)
+	}
+	if !contains(r.Context, "Below the recent norm") {
+		t.Errorf("context = %q", r.Context)
+	}
+}
+
+func TestHistoryFlagsUnusualWeek(t *testing.T) {
+	r := Evaluate(Counts{Negative: 12, NegativeBySeverity: sev(0, 0, 12)}).
+		WithHistory([]int{2, 1, 3, 2, 2, 1})
+	if !contains(r.Context, "Above the recent norm") {
+		t.Errorf("context = %q", r.Context)
+	}
+}
+
+func TestHistoryTooShortSaysSo(t *testing.T) {
+	r := Evaluate(Counts{Negative: 4, NegativeBySeverity: sev(0, 4)}).WithHistory([]int{3})
+	if r.TypicalWeek != -1 || !contains(r.Context, "Not enough history") {
+		t.Errorf("context = %q typical = %d", r.Context, r.TypicalWeek)
+	}
+}
+
+func contains(s, sub string) bool { return strings.Contains(s, sub) }

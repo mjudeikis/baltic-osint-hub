@@ -4,7 +4,10 @@
 // uniformly dire even during an ordinary week.
 package posture
 
-import "strconv"
+import (
+	"sort"
+	"strconv"
+)
 
 // Level is an ascending scale — 1 is calmest, 5 is worst. It is deliberately
 // NOT DEFCON numbering (which counts down); the word is the meaning and the
@@ -55,6 +58,41 @@ type Reading struct {
 	Counts      Counts `json:"counts"`
 	// Balance is the share of tone-bearing items that are favourable, 0..1.
 	Balance float64 `json:"balance"`
+	// Context answers "is this week unusual?" against the trailing weekly
+	// history. A bare count invites the reader to assume the worst; the
+	// comparison is what makes it informative.
+	Context string `json:"context"`
+	// TypicalWeek is the median adverse count of recent weeks, -1 when there
+	// is not yet enough history to say.
+	TypicalWeek int `json:"typical_week"`
+}
+
+// WithHistory adds the "is this normal?" comparison. History is adverse counts
+// per completed week, oldest first.
+func (r Reading) WithHistory(history []int) Reading {
+	r.TypicalWeek = -1
+	if len(history) < 3 {
+		r.Context = "Not enough history yet to say whether this is a typical week."
+		return r
+	}
+	sorted := append([]int(nil), history...)
+	sort.Ints(sorted)
+	typical := sorted[len(sorted)/2]
+	r.TypicalWeek = typical
+
+	switch n := r.Counts.Negative; {
+	case typical == 0 && n == 0:
+		r.Context = "In line with recent weeks, which have also been quiet."
+	case n > typical*2 && n-typical >= 3:
+		r.Context = "Above the recent norm — a typical week over the last " +
+			strconv.Itoa(len(history)) + " weeks saw " + strconv.Itoa(typical) + "."
+	case n*2 < typical:
+		r.Context = "Below the recent norm — a typical week saw " + strconv.Itoa(typical) + "."
+	default:
+		r.Context = "About normal for this region — a typical week over the last " +
+			strconv.Itoa(len(history)) + " weeks saw " + strconv.Itoa(typical) + "."
+	}
+	return r
 }
 
 // Evaluate derives the level from the adverse mix, letting favourable

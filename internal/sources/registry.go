@@ -120,6 +120,26 @@ func extraSources() []Fetcher {
 		NewGoogleNews("gnews-cable", "Baltic Sea cable OR pipeline damage vessel", "en", "US:en"),
 		NewGoogleNews("gnews-lt", "sabotažas OR diversija OR šnipinėjimas", "lt", "LT:lt"),
 
+		// --- Russian and Belarusian state media ---
+		// The official layer. Telegram already gives us the propaganda and the
+		// exile-press layers, but formal signalling — exercise announcements,
+		// policy statements, ministry releases — happens on the wires. Every
+		// one of these is classified state-controlled: monitored as evidence
+		// of messaging, marked in the UI, and excluded from the posture
+		// reading so an adversary cannot move our own threat gauge.
+		NewRSS("tass-en", "https://tass.com/rss/v2.xml", "en", fast),
+		NewRSS("tass-ru", "https://tass.ru/rss/v2.xml", "ru", fast),
+		NewRSS("ria", "https://ria.ru/export/rss2/index.xml", "ru", fast),
+		NewRSS("interfax", "https://www.interfax.ru/rss.asp", "ru", fast),
+		NewRSS("kommersant", "https://www.kommersant.ru/RSS/news.xml", "ru", slow),
+		NewRSS("zvezda", "https://tvzvezda.ru/export/rss.xml", "ru", slow),
+		NewRSS("belta", "https://www.belta.by/rss", "ru", slow),
+
+		// Kaliningrad regional press publishes no reachable feed (klops,
+		// newkaliningrad and rugrad all refuse automated clients), so the
+		// exclave's local reporting is covered by a scoped news query instead.
+		NewGoogleNews("gnews-kaliningrad", "Калининград учения OR военные OR полигон OR железная дорога", "ru", "RU:ru"),
+
 		// --- Telegram: Belarus monitoring and Russian investigative outlets ---
 		NewTelegram("zerkalo_io", "ru"),
 		NewTelegram("belarusian_silovik", "ru"),

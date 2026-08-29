@@ -57,6 +57,7 @@ export default function PostureBanner({
 
       <p className="posture-headline">{posture.headline}</p>
       <p className="posture-explain">{posture.explanation}</p>
+      {posture.context && <p className="posture-context">{posture.context}</p>}
 
       {total > 0 && (
         <>

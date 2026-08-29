@@ -6,6 +6,7 @@ import {
   severityColor,
   SEVERITY_LABELS,
   toneDef,
+  CREDIBILITY,
 } from "../taxonomy";
 
 export default function Feed({ incidents }: { incidents: Incident[] }) {
@@ -15,7 +16,11 @@ export default function Feed({ incidents }: { incidents: Incident[] }) {
   return (
     <div>
       {incidents.map((inc) => (
-        <article className="feed-item" key={inc.id}>
+        <article
+          className="feed-item"
+          key={inc.id}
+          data-state-media={inc.credibility === "state-controlled" || undefined}
+        >
           <div className="head">
             <span
               className="tone"
@@ -46,6 +51,14 @@ export default function Feed({ incidents }: { incidents: Incident[] }) {
               })}
             </time>
             <span className="src">{inc.source}</span>
+            {inc.credibility === "state-controlled" && (
+              <span
+                className="cred-warn"
+                title={CREDIBILITY["state-controlled"].label}
+              >
+                ⚠ state media — adversary messaging, not verified reporting
+              </span>
+            )}
           </div>
           <div>
             <a href={inc.url} target="_blank" rel="noopener noreferrer">

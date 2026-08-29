@@ -34,6 +34,10 @@ func main() {
 	}
 	defer db.Close()
 
+	// State-controlled outlets are monitored but must never move the
+	// posture reading; the store filters them out of tone counts.
+	store.StateControlledSources = sources.StateControlledList()
+
 	fetchAll(ctx, log, db)
 	runLayers(ctx, log, db, cfg)
 
