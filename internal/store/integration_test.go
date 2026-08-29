@@ -529,3 +529,50 @@ func TestWeeklyAdverseHistoryKeepsGenuineZeroWeeks(t *testing.T) {
 		t.Errorf("history = %v, want [0] — a busy but favourable week is a real zero", hist)
 	}
 }
+
+// A change to the aggregation rules must reach events that already exist, not
+// only ones a later run happens to touch. Without this the dashboard would
+// publish a mix of old and new logic indefinitely.
+func TestRefreshEventsSinceHealsStaleEvents(t *testing.T) {
+	s, ctx := testStore(t)
+	StateControlledSources = []string{"tass-en"}
+	now := time.Now().Add(-2 * time.Hour)
+
+	a := seed(t, s, ctx, "lrt-en", "the event", "negative", 2, []string{"LT"}, now)
+	b := seed(t, s, ctx, "tass-en", "the event", "negative", 5, []string{"LT", "EE"}, now)
+	eventID, err := s.CreateEventFor(ctx, a)
+	if err != nil {
+		t.Fatalf("CreateEventFor: %v", err)
+	}
+	if err := s.AttachIncident(ctx, b, eventID); err != nil {
+		t.Fatalf("AttachIncident: %v", err)
+	}
+
+	// Simulate a row written by the older, buggy aggregation: severity taken
+	// from the state outlet, and its country tag included.
+	if _, err := s.pool.Exec(ctx,
+		`UPDATE events SET severity=5, countries='{LT,EE}' WHERE id=$1`, eventID); err != nil {
+		t.Fatalf("stale write: %v", err)
+	}
+
+	n, err := s.RefreshEventsSince(ctx, time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatalf("RefreshEventsSince: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("refreshed %d events, want 1", n)
+	}
+
+	var sev int
+	var countries []string
+	if err := s.pool.QueryRow(ctx,
+		`SELECT severity, countries FROM events WHERE id=$1`, eventID).Scan(&sev, &countries); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if sev != 2 {
+		t.Errorf("severity = %d, want 2 — the state outlet's 5 must not survive a refresh", sev)
+	}
+	if len(countries) != 1 || countries[0] != "LT" {
+		t.Errorf("countries = %v, want [LT]", countries)
+	}
+}

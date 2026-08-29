@@ -299,3 +299,41 @@ func ConfidenceLabel(independentSources int) string {
 		return "state media only"
 	}
 }
+
+// RefreshEventsSince recomputes every event that occurred since the cutoff.
+//
+// RefreshEvent otherwise runs only when an incident is attached, so an event
+// whose membership has settled is never revisited — which means a change to
+// the aggregation rules would silently apply to new events only, leaving the
+// published numbers a mix of old and new logic. Running this each collector
+// pass makes any such change self-healing rather than something an operator
+// has to remember to backfill by hand.
+//
+// It is safe to run repeatedly: aggregate() is a pure function of an event's
+// members, so refreshing an unchanged event rewrites identical values.
+func (s *Store) RefreshEventsSince(ctx context.Context, since time.Time) (int, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id FROM events WHERE occurred_at >= $1 ORDER BY id`, since)
+	if err != nil {
+		return 0, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, id := range ids {
+		if err := s.RefreshEvent(ctx, id); err != nil {
+			return 0, err
+		}
+	}
+	return len(ids), nil
+}

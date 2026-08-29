@@ -106,6 +106,22 @@ func clusterIncidents(ctx context.Context, log *slog.Logger, db *store.Store, em
 		log.Error("clustering", "err", err)
 		return
 	}
+
+	// Recompute every event in the published window, not just the ones this
+	// run touched. cluster.Run only refreshes events it attached to, so a
+	// change to the aggregation rules would otherwise apply to new events
+	// alone and leave the dashboard showing a mix of old and new logic. This
+	// makes such changes self-healing: deploy, wait one run, done. aggregate()
+	// is a pure function of an event's members, so re-running it on an
+	// unchanged event rewrites identical values.
+	//
+	// The window covers everything the dashboard publishes — the 7-day
+	// posture, the 35-day board and the 12-week baseline — with room to spare.
+	if n, err := db.RefreshEventsSince(ctx, time.Now().AddDate(0, 0, -120)); err != nil {
+		log.Error("refresh events", "err", err)
+	} else if n > 0 {
+		log.Info("events refreshed", "count", n)
+	}
 	if res.Considered > 0 {
 		log.Info("clustering done", "considered", res.Considered,
 			"new_events", res.NewEvents, "merged", res.Merged)
