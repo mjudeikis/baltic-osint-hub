@@ -66,16 +66,17 @@ func main() {
 // been wrong. A monitor that asks to be trusted should keep a record of its own
 // judgements rather than only ever showing the current one.
 func snapshotPosture(ctx context.Context, log *slog.Logger, db *store.Store) {
-	byTone, sev, err := db.ToneCounts(ctx, 7, "")
+	byTone, sev, corroborated, err := db.ToneCounts(ctx, 7, "")
 	if err != nil {
 		log.Error("snapshot: tone counts", "err", err)
 		return
 	}
 	reading := posture.Evaluate(posture.Counts{
-		Positive:           byTone[enrich.TonePositive],
-		Neutral:            byTone[enrich.ToneNeutral],
-		Negative:           byTone[enrich.ToneNegative],
-		NegativeBySeverity: sev,
+		Positive:               byTone[enrich.TonePositive],
+		Neutral:                byTone[enrich.ToneNeutral],
+		Negative:               byTone[enrich.ToneNegative],
+		NegativeBySeverity:     sev,
+		CorroboratedBySeverity: corroborated,
 	})
 	if history, err := db.WeeklyAdverseHistory(ctx, 12); err == nil {
 		reading = reading.WithHistory(history)

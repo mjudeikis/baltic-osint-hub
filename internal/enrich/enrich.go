@@ -77,6 +77,8 @@ NOT relevant: general politics, economy, sports, culture, Ukraine-war battlefiel
 
 Severity scale (how consequential, regardless of who benefits): 1 = analysis/statements, 2 = minor incident or elevated rhetoric, 3 = notable incident (jamming episode, arrest, small sabotage), 4 = serious incident (infrastructure damaged, airspace violated by military aircraft, major cyberattack), 5 = critical (casualties, article-5-adjacent, major infrastructure destroyed).
 
+Severity 4 and 5 require that SOMETHING HAPPENED. They describe an event, not a condition and not a warning. Reporting about capability, readiness, munitions or equipment stocks, force levels, budgets, procurement, vulnerability assessments, war-gaming, or what could happen in a future conflict is severity 1 or 2 no matter how grave the wording — "critical shortage", "not enough to stop an attack" and "gravest threat since the Cold War" are all still analysis. If you cannot name a discrete thing that occurred on a date, the item is not a 4.
+
 Tone — judge every item from the perspective of the security of Lithuania, Latvia, Estonia and Poland, and be honest in both directions:
 - "negative": the adversary succeeded or the region lost ground. Sabotage that worked, airspace actually violated, a cyberattack that landed, a new threat capability deployed against the region, coercion that achieved its aim.
 - "positive": the region gained ground. Saboteurs or spies arrested, charged or convicted; an attack thwarted or intercepted; air defence, troops or capabilities deployed or delivered to the region; allied reinforcement; new funding or infrastructure for defence; sanctions or expulsions imposed; resilience improving; de-escalation.

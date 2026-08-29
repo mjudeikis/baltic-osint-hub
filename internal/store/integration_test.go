@@ -113,7 +113,7 @@ func TestToneCountsCountsEventsNotArticles(t *testing.T) {
 
 	// Before clustering, each article is its own unit — the old behaviour, and
 	// what the dashboard must keep showing until the backfill catches up.
-	byTone, _, err := s.ToneCounts(ctx, 7, "")
+	byTone, _, _, err := s.ToneCounts(ctx, 7, "")
 	if err != nil {
 		t.Fatalf("ToneCounts: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestToneCountsCountsEventsNotArticles(t *testing.T) {
 		t.Fatalf("RefreshEvent: %v", err)
 	}
 
-	byTone, sev, err := s.ToneCounts(ctx, 7, "")
+	byTone, sev, _, err := s.ToneCounts(ctx, 7, "")
 	if err != nil {
 		t.Fatalf("ToneCounts: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestToneCountsMixesClusteredAndUnclustered(t *testing.T) {
 		t.Fatalf("RefreshEvent: %v", err)
 	}
 
-	byTone, _, err := s.ToneCounts(ctx, 7, "")
+	byTone, _, _, err := s.ToneCounts(ctx, 7, "")
 	if err != nil {
 		t.Fatalf("ToneCounts: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestToneCountsExcludesStateMediaOnlyEvents(t *testing.T) {
 		t.Fatalf("RefreshEvent: %v", err)
 	}
 
-	byTone, _, err := s.ToneCounts(ctx, 7, "")
+	byTone, _, _, err := s.ToneCounts(ctx, 7, "")
 	if err != nil {
 		t.Fatalf("ToneCounts: %v", err)
 	}
@@ -574,5 +574,74 @@ func TestRefreshEventsSinceHealsStaleEvents(t *testing.T) {
 	}
 	if len(countries) != 1 || countries[0] != "LT" {
 		t.Errorf("countries = %v, want [LT]", countries)
+	}
+}
+
+// The top two posture levels require corroboration, so ToneCounts must report
+// which severe events actually have it. A single-source severity-4 event is
+// counted as adverse but not as corroborated.
+func TestToneCountsReportsCorroboration(t *testing.T) {
+	s, ctx := testStore(t)
+	StateControlledSources = []string{"tass-en"}
+	now := time.Now().Add(-2 * time.Hour)
+
+	// Event A: one independent outlet plus a state wire. Not corroborated —
+	// state media never counts toward it.
+	a := seed(t, s, ctx, "meduza-en", "lone report", "negative", 4, []string{"LT"}, now)
+	aState := seed(t, s, ctx, "tass-en", "lone report", "negative", 4, []string{"LT"}, now)
+	evA, err := s.CreateEventFor(ctx, a)
+	if err != nil {
+		t.Fatalf("CreateEventFor: %v", err)
+	}
+	if err := s.AttachIncident(ctx, aState, evA); err != nil {
+		t.Fatalf("AttachIncident: %v", err)
+	}
+	if err := s.RefreshEvent(ctx, evA); err != nil {
+		t.Fatalf("RefreshEvent: %v", err)
+	}
+
+	_, sev, corroborated, err := s.ToneCounts(ctx, 7, "")
+	if err != nil {
+		t.Fatalf("ToneCounts: %v", err)
+	}
+	if sev[4] != 1 {
+		t.Errorf("adverse severity-4 = %d, want 1", sev[4])
+	}
+	if corroborated[4] != 0 {
+		t.Errorf("corroborated severity-4 = %d, want 0 — a state wire is not corroboration", corroborated[4])
+	}
+
+	// Add a second independent outlet to the same event; now it is corroborated.
+	b := seed(t, s, ctx, "err-news", "lone report", "negative", 4, []string{"LT"}, now)
+	if err := s.AttachIncident(ctx, b, evA); err != nil {
+		t.Fatalf("AttachIncident: %v", err)
+	}
+	if err := s.RefreshEvent(ctx, evA); err != nil {
+		t.Fatalf("RefreshEvent: %v", err)
+	}
+	_, sev, corroborated, err = s.ToneCounts(ctx, 7, "")
+	if err != nil {
+		t.Fatalf("ToneCounts: %v", err)
+	}
+	if sev[4] != 1 || corroborated[4] != 1 {
+		t.Errorf("after a second independent source: adverse=%d corroborated=%d, want 1 and 1",
+			sev[4], corroborated[4])
+	}
+}
+
+// An incident that has not been clustered yet is treated as corroborated, so
+// the reading does not dip during the minutes between classification and
+// clustering. Not-yet-assessed is not a finding of "uncorroborated".
+func TestToneCountsUnclusteredCountsAsCorroborated(t *testing.T) {
+	s, ctx := testStore(t)
+	StateControlledSources = []string{}
+	seed(t, s, ctx, "lrt-en", "fresh item", "negative", 4, []string{"LT"}, time.Now().Add(-time.Hour))
+
+	_, sev, corroborated, err := s.ToneCounts(ctx, 7, "")
+	if err != nil {
+		t.Fatalf("ToneCounts: %v", err)
+	}
+	if sev[4] != 1 || corroborated[4] != 1 {
+		t.Errorf("unclustered: adverse=%d corroborated=%d, want 1 and 1", sev[4], corroborated[4])
 	}
 }

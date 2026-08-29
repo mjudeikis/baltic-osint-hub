@@ -128,7 +128,7 @@ func TestClusterRunE2E(t *testing.T) {
 	}
 
 	// The number the public actually sees: 5 articles became 3 events.
-	byTone, _, err := db.ToneCounts(ctx, 7, "")
+	byTone, _, _, err := db.ToneCounts(ctx, 7, "")
 	if err != nil {
 		t.Fatalf("ToneCounts: %v", err)
 	}

@@ -46,7 +46,20 @@ type Counts struct {
 	Negative int `json:"negative"`
 	// Adverse severity histogram, index 1..5 (index 0 unused).
 	NegativeBySeverity [6]int `json:"negative_by_severity"`
-	PositiveWeight     int    `json:"-"`
+	// The subset of the above backed by at least two independent sources.
+	//
+	// The top two levels require corroboration, because a single automated
+	// classification should not be able to pin a public reading. This is not
+	// hypothetical: one identical article was classified severity 4 in one
+	// environment and severity 3 in another, which put the published posture
+	// two levels apart — High against Watchful — off one model call. Severity
+	// 4 also crosses into the band that good news cannot soften, so that lone
+	// classification would have held the region at High for a week.
+	//
+	// A real serious incident — a cut cable, a violated border — is carried by
+	// more than one outlet within hours, so this costs little in detection.
+	CorroboratedBySeverity [6]int `json:"corroborated_by_severity"`
+	PositiveWeight         int    `json:"-"`
 }
 
 // Reading is the published verdict.
@@ -131,8 +144,9 @@ type Rule struct {
 // mirrored here — TestRulesMatchEvaluate fails if the two drift apart.
 func Rules() []Rule {
 	return []Rule{
-		{int(Severe), Severe.String(), "any adverse event at severity 5"},
-		{int(High), High.String(), "any adverse event at severity 4"},
+		{int(Severe), Severe.String(), "a corroborated adverse event at severity 5"},
+		{int(High), High.String(), "a corroborated adverse event at severity 4"},
+		{int(Elevated), Elevated.String(), "an adverse event at severity 4 or 5 reported by only one source"},
 		{int(Elevated), Elevated.String(), "3 or more adverse events at severity 3"},
 		{int(Watchful), Watchful.String(), "any adverse event at severity 3, or 5 or more adverse events at any severity"},
 		{int(Watchful), Watchful.String(), "at least one adverse event"},
@@ -144,8 +158,10 @@ func Rules() []Rule {
 // it. Both directions are published for the same reason the ladder is.
 func Adjustments() []string {
 	return []string{
+		"\"Corroborated\" means at least two independent sources carried it. State-controlled outlets never count toward corroboration.",
+		"A serious event resting on a single source holds at Elevated and says so, rather than being promoted to High or hidden.",
 		"Elevated steps down to Watchful when favourable developments outnumber adverse ones.",
-		"High and Severe never step down: a serious event stands on its own regardless of good news elsewhere.",
+		"High and Severe never step down: a serious event stands on its own regardless of good news elsewhere. Neither does an uncorroborated serious event, which has already been held down once.",
 		"State-controlled outlets are excluded from every count, so adversary messaging cannot move the reading.",
 		"Counts are per event, not per article: multiple outlets reporting one incident count once.",
 	}
@@ -164,13 +180,24 @@ func Evaluate(c Counts) Reading {
 		r.Balance = float64(c.Positive) / float64(toned)
 	}
 
+	// Uncorroborated severe events still count — they are just not allowed to
+	// carry the top two levels on their own.
+	uncorroboratedSevere := (c.NegativeBySeverity[5] - c.CorroboratedBySeverity[5]) +
+		(c.NegativeBySeverity[4] - c.CorroboratedBySeverity[4])
+
 	switch {
-	case c.NegativeBySeverity[5] > 0:
+	case c.CorroboratedBySeverity[5] > 0:
 		r.Level = Severe
 		r.Headline = "Critical adverse event in the last 7 days"
-	case c.NegativeBySeverity[4] > 0:
+	case c.CorroboratedBySeverity[4] > 0:
 		r.Level = High
-		r.Headline = pluralise(c.NegativeBySeverity[4], "serious adverse event", "serious adverse events") + " in the last 7 days"
+		r.Headline = pluralise(c.CorroboratedBySeverity[4], "serious adverse event", "serious adverse events") + " in the last 7 days"
+	case uncorroboratedSevere > 0:
+		// Serious, but resting on one outlet. Held at Elevated and said out
+		// loud, rather than either hidden or promoted to High.
+		r.Level = Elevated
+		r.Headline = pluralise(uncorroboratedSevere, "serious adverse event reported by a single source",
+			"serious adverse events reported by a single source") + " — awaiting corroboration"
 	case c.NegativeBySeverity[3] >= 3:
 		r.Level = Elevated
 		r.Headline = "Repeated notable adverse activity"
@@ -189,7 +216,11 @@ func Evaluate(c Counts) Reading {
 	// sustained defensive progress genuinely is a different situation from the
 	// same adverse count with nothing going right. The top two levels are
 	// immune — an actual serious incident stands on its own.
-	if r.Level == Elevated && c.Positive > c.Negative {
+	//
+	// An uncorroborated serious event is also immune. It has already been held
+	// down from High; stepping it down again would bury the very thing the
+	// reader most needs to know is pending.
+	if r.Level == Elevated && uncorroboratedSevere == 0 && c.Positive > c.Negative {
 		r.Level = Watchful
 		r.Headline = "Adverse activity offset by defensive progress"
 	}

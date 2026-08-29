@@ -40,7 +40,25 @@ type chatRequest struct {
 	// max_completion_tokens is the current name; the older max_tokens is
 	// rejected by reasoning models (gpt-5 family).
 	MaxCompletionTokens int `json:"max_completion_tokens,omitempty"`
+	// Seed pins sampling so the same article classifies the same way across
+	// runs and across environments.
+	//
+	// This exists because dev and prod classified one identical article — an
+	// AP report on Patriot stocks — at severity 4 and severity 3 respectively,
+	// which put the published regional posture two levels apart: High in one,
+	// Watchful in the other.
+	//
+	// Best-effort, not a guarantee. OpenAI reproduces results only while the
+	// backend is unchanged, and temperature cannot be pinned alongside it —
+	// gpt-5-mini rejects any value but the default. So this removes
+	// environment-to-environment drift without making classification
+	// deterministic; the corroboration requirement in internal/posture is what
+	// actually stops one uncertain classification from moving the reading.
+	Seed int `json:"seed,omitempty"`
 }
+
+// classifierSeed is arbitrary but fixed; only its stability matters.
+const classifierSeed = 20260829
 
 type chatResponse struct {
 	Choices []struct {
@@ -63,6 +81,7 @@ func (c *openAIClient) complete(ctx context.Context, model, system, user string,
 			{Role: "user", Content: user},
 		},
 		MaxCompletionTokens: maxTokens,
+		Seed:                classifierSeed,
 	})
 	if err != nil {
 		return "", err

@@ -172,16 +172,17 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 // it was derived from, so the number is auditable rather than a black box.
 func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 	country := r.URL.Query().Get("country")
-	byTone, sev, err := s.db.ToneCounts(r.Context(), 7, country)
+	byTone, sev, corroborated, err := s.db.ToneCounts(r.Context(), 7, country)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	reading := posture.Evaluate(posture.Counts{
-		Positive:           byTone[enrich.TonePositive],
-		Neutral:            byTone[enrich.ToneNeutral],
-		Negative:           byTone[enrich.ToneNegative],
-		NegativeBySeverity: sev,
+		Positive:               byTone[enrich.TonePositive],
+		Neutral:                byTone[enrich.ToneNeutral],
+		Negative:               byTone[enrich.ToneNegative],
+		NegativeBySeverity:     sev,
+		CorroboratedBySeverity: corroborated,
 	})
 	// "Is this week unusual?" — a bare count invites the reader to assume the
 	// worst, so publish the comparison alongside it.

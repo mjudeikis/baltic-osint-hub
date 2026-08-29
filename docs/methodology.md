@@ -149,6 +149,30 @@ Rules:
 - It answers **"is this week unusual?"** against the median of the trailing
   twelve weeks, and says "not enough history yet" when it cannot.
 - Counts are **per event, not per article** (see de-duplication above).
+- **The top two levels require corroboration.** High and Severe need a
+  severity-4 or -5 adverse event carried by at least two independent sources.
+  A serious event resting on one outlet holds at Elevated and says so —
+  *"awaiting corroboration"* — rather than being promoted or hidden.
+
+That last rule exists because of a specific failure. One identical article — an
+AP report on Patriot interceptor stocks — was classified severity 4 in one
+environment and severity 3 in another. That single model call put the published
+posture two levels apart, High against Watchful, and severity 4 is immune to
+the favourable down-step, so it would have held the region at High for a week
+on one uncertain classification.
+
+The classifier now pins a `seed`, which removes environment-to-environment
+drift, but that is best-effort: OpenAI reproduces results only while the
+backend is unchanged, and `temperature` cannot be pinned alongside it because
+gpt-5-mini rejects any value but the default. Determinism is therefore not
+something to rely on, and corroboration is the actual guard.
+
+The cost in detection is low: a genuine serious incident — a cut cable, a
+violated border — is carried by several outlets within hours. The cost worth
+watching is the opposite one: corroboration is currently **rare** (4 of 81
+events in production carry two independent sources), so if real serious events
+routinely fail to clear the bar, the bar is wrong and should be revisited
+rather than left to quietly suppress the reading.
 
 The full ladder is published at `/api/meta` and behind "How this level is
 decided" in the banner, so a reader can check the reading against the counts

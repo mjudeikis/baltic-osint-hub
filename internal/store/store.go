@@ -504,8 +504,8 @@ func (s *Store) WeeklyAdverseHistory(ctx context.Context, weeks int) ([]int, err
 // This counts units, not rows — see unitExpr. Before clustering existed, one
 // well-covered incident reported by six outlets contributed six to the adverse
 // count, so the posture reading tracked press attention rather than events.
-func (s *Store) ToneCounts(ctx context.Context, days int, country string) (map[string]int, [6]int, error) {
-	var sev [6]int
+func (s *Store) ToneCounts(ctx context.Context, days int, country string) (map[string]int, [6]int, [6]int, error) {
+	var sev, corroborated [6]int
 	byTone := map[string]int{}
 
 	// make_interval keeps `days` a genuine int parameter; string-concatenating
@@ -516,10 +516,15 @@ func (s *Store) ToneCounts(ctx context.Context, days int, country string) (map[s
 	// direct control of our own reading. Excluding them at the row level also
 	// gives the right answer per event — an event still counts if any
 	// independent outlet reported it, and drops out if only state media did.
+	// COALESCE(e.source_count, 2) treats a not-yet-clustered incident as
+	// corroborated. Not-yet-assessed is not the same as uncorroborated, and
+	// suppressing on absence would understate a real event during the minutes
+	// between classification and clustering.
 	q := `WITH units AS (
 	        SELECT ` + unitExpr + ` AS unit,
 	               max(COALESCE(e.tone, i.tone)) AS tone,
-	               max(COALESCE(e.severity, i.severity)) AS severity
+	               max(COALESCE(e.severity, i.severity)) AS severity,
+	               max(COALESCE(e.source_count, 2)) >= 2 AS corroborated
 	        FROM incidents i
 	        LEFT JOIN events e ON e.id = i.event_id
 	        JOIN raw_items r ON r.id = i.raw_item_id
@@ -531,25 +536,30 @@ func (s *Store) ToneCounts(ctx context.Context, days int, country string) (map[s
 		args = append(args, country)
 	}
 	q += ` GROUP BY unit)
-	      SELECT tone, severity, count(*) FROM units GROUP BY tone, severity`
+	      SELECT tone, severity, corroborated, count(*)
+	      FROM units GROUP BY tone, severity, corroborated`
 
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
-		return nil, sev, err
+		return nil, sev, corroborated, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var tone string
 		var severity, n int
-		if err := rows.Scan(&tone, &severity, &n); err != nil {
-			return nil, sev, err
+		var isCorroborated bool
+		if err := rows.Scan(&tone, &severity, &isCorroborated, &n); err != nil {
+			return nil, sev, corroborated, err
 		}
 		byTone[tone] += n
 		if tone == "negative" && severity >= 1 && severity <= 5 {
 			sev[severity] += n
+			if isCorroborated {
+				corroborated[severity] += n
+			}
 		}
 	}
-	return byTone, sev, rows.Err()
+	return byTone, sev, corroborated, rows.Err()
 }
 
 // SourceStatuses returns the most recent run per source.
