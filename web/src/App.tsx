@@ -17,6 +17,7 @@ import Timeline from "./components/Timeline";
 import IncidentMap from "./components/IncidentMap";
 import Feed from "./components/Feed";
 import SarPanel from "./components/SarPanel";
+import StatusBanner from "./components/StatusBanner";
 
 const DAY_PRESETS = [7, 30, 90] as const;
 
@@ -31,26 +32,37 @@ export default function App() {
   const [layers, setLayers] = useState<Layers | null>(null);
   const [error, setError] = useState("");
 
+  // Periodic refresh so a dashboard left open doesn't drift — and so the
+  // status banner's "last sync" can't claim freshness the rest of the page
+  // doesn't have. Matches the API's 5-minute Cache-Control.
+  const [refreshKey, setRefreshKey] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setRefreshKey((k) => k + 1), 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     fetchSummary().then(setSummary).catch((e) => setError(String(e)));
     fetchSources().then(setSources).catch(() => {});
     fetchLayers().then(setLayers).catch(() => {});
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     fetchTimeline(days, country || undefined)
       .then(setTimeline)
       .catch((e) => setError(String(e)));
-  }, [days, country]);
+  }, [days, country, refreshKey]);
 
   useEffect(() => {
     fetchIncidents({ days, country: country || undefined, category: category || undefined })
       .then(setIncidents)
       .catch((e) => setError(String(e)));
-  }, [days, country, category]);
+  }, [days, country, category, refreshKey]);
 
   return (
     <div className="container">
+      <StatusBanner sources={sources} />
+
       <header className="site">
         <h1>Baltic OSINT Hub</h1>
         <p>
