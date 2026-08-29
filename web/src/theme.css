@@ -909,3 +909,65 @@ footer.site td {
 .linklike:hover {
   opacity: 0.8;
 }
+
+/* Map layer legend. Styled to match the satellite legend so the two
+   "here is what this means" disclosures read as the same kind of thing. */
+.map-legend {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+}
+.map-legend summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.map-legend[open] summary {
+  margin-bottom: 8px;
+}
+.map-legend-lead {
+  margin: 10px 0 12px;
+  color: var(--text-secondary);
+}
+.map-legend dl {
+  margin: 0;
+}
+.map-legend-row {
+  padding: 10px 0;
+  border-top: 1px solid var(--grid);
+}
+.map-legend-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.map-legend dt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.map-legend dd {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.map-legend dd p {
+  margin: 0 0 4px;
+}
+.map-legend dd p:last-child {
+  margin-bottom: 0;
+}
+/* The limits are the part readers skip and most need, so they get their own
+   colour rather than blending into the rationale above them. */
+.map-legend-limit {
+  color: var(--text-muted);
+}
+.map-legend .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+}

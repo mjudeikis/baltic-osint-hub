@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { cellToBoundary, cellToLatLng } from "h3-js";
+import MapLegend from "./MapLegend";
 import { Incident, Layers } from "../api";
 import { categoryLabel, cssColor, severityColor, SEVERITY_LABELS } from "../taxonomy";
 
@@ -427,6 +428,7 @@ export default function IncidentMap({
           listed vessels and AIS gaps; routine stops are dimmed
         </span>
       </div>
+      <MapLegend />
     </>
   );
 }
