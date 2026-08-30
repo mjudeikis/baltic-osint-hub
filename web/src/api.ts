@@ -60,6 +60,9 @@ export interface SummaryCell {
   baseline: number;
   baseline_samples: number;
   max_severity: number;
+  // Restricted to corroborated events, so the board's severity label agrees
+  // with the posture banner rather than contradicting it.
+  max_severity_corroborated: number;
 }
 
 export interface SourceStatus {

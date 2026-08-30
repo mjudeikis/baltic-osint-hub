@@ -18,6 +18,11 @@ const OVERLAYS = [
   { key: "thermal", label: "Thermal (FIRMS)", cssVar: "--series-8", shape: "square" },
   { key: "air", label: "Air activity", cssVar: "--series-7", shape: "triangle" },
   { key: "sea", label: "Sea activity", cssVar: "--series-6", shape: "diamond" },
+  // Routine stops are off by default. Ships stop constantly and legitimately,
+  // so drawing every one of them put ~180 marks on the map and buried the
+  // handful that mean something. Kept as an opt-in layer rather than deleted,
+  // because the baseline is what makes an anomaly legible.
+  { key: "searoutine", label: "Sea: routine stops", cssVar: "--series-6", shape: "diamond", hollow: true },
   { key: "sites", label: "Radar sites", cssVar: "--series-4", shape: "square", hollow: true },
   { key: "cables", label: "Cables & pipelines", cssVar: "--series-3", shape: "line" },
   { key: "territory", label: "RU / BY territory", cssVar: "--series-8", shape: "area" },
@@ -55,6 +60,7 @@ export default function IncidentMap({
     thermal: true,
     air: true,
     sea: true,
+    searoutine: false,
     sites: true,
     cables: true,
     territory: true,
@@ -286,22 +292,37 @@ export default function IncidentMap({
       flag: s.sanctioned?.flag ?? "",
       url: s.sanctioned?.url ?? "",
     })), () => {
+      // Two layers over one source so each gets its own toggle. Same shape —
+      // it is the same kind of thing — solid for a listed vessel or a
+      // transponder going dark, hollow for a routine stop.
       m.addLayer({
         id: "sea",
         type: "symbol",
         source: "sea",
+        filter: ["==", ["get", "notable"], 1],
         layout: {
-          // Same shape either way — it is the same layer. Solid and larger
-          // for a listed vessel or a transponder going dark; hollow and small
-          // for a routine stop, which is context rather than a finding.
-          "icon-image": [
-            "case", ["==", ["get", "notable"], 1], "sh-sea-notable", "sh-sea-routine",
-          ],
-          "icon-size": ["case", ["==", ["get", "notable"], 1], 0.7, 0.42],
+          "icon-image": "sh-sea-notable",
+          "icon-size": 0.7,
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
         },
       });
+      m.addLayer({
+        id: "searoutine",
+        type: "symbol",
+        source: "sea",
+        filter: ["==", ["get", "notable"], 0],
+        layout: {
+          "icon-image": "sh-sea-routine",
+          "icon-size": 0.42,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "visibility": "none",
+        },
+      });
+      bindPopup(m, "searoutine", (p) =>
+        `<strong>⚓ ${esc(p.name)}</strong><br/>${esc(p.event)} · ${esc(p.corridor)} · ${p.sog ?? "?"} kn<br/>${new Date(p.when).toLocaleString("en-GB")}`,
+      );
       bindPopup(m, "sea", (p) => {
         const listed = p.sanctioned
           ? `<br/><strong>⚠ listed:</strong> ${esc(p.sanctioned)}${p.risk ? ` (${esc(p.risk)})` : ""}${p.flag ? ` · flag ${esc(p.flag)}` : ""}` +
@@ -416,9 +437,10 @@ export default function IncidentMap({
     thermal: layers?.firms.length ?? 0,
     air: layers?.air.length ?? 0,
     // Sea counts only the notable events. The rest is ordinary harbour
-    // traffic kept as baseline; putting 120 in the toggle implied 120 things
-    // worth looking at when four were.
+    // traffic kept as baseline; putting 180 in the toggle implied 180 things
+    // worth looking at when seven were.
     sea: layers?.sea.filter((s) => s.notable).length ?? 0,
+    searoutine: layers?.sea.filter((s) => !s.notable).length ?? 0,
     sites: layers?.sar.length ?? 0,
     cables: 0,
     territory: 0,
@@ -456,8 +478,8 @@ export default function IncidentMap({
         <span style={{ color: "var(--text-muted)" }}>
           incident severity · jamming shading = share of affected aircraft (previous day) ·
           shape shows the layer: ● incident, ▲ air, ◆ sea, ■ thermal · thermal/air/sea
-          are machine detections, not verified incidents · a solid ◆ is a listed vessel
-          or an AIS gap, a hollow ◇ is a routine stop
+          are machine detections, not verified incidents · ◆ sea shows listed vessels and
+          AIS gaps; routine stops are a separate layer, off by default
         </span>
       </div>
       <MapLegend />

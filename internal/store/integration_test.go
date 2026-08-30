@@ -645,3 +645,66 @@ func TestToneCountsUnclusteredCountsAsCorroborated(t *testing.T) {
 		t.Errorf("unclustered: adverse=%d corroborated=%d, want 1 and 1", sev[4], corroborated[4])
 	}
 }
+
+// The country board's severity label must respect corroboration too, or it
+// contradicts the posture banner on the same page. One uncorroborated report
+// classified as affecting all four countries was marking the entire region
+// "Serious" while the banner correctly said it was awaiting corroboration.
+func TestSummaryReportsCorroboratedSeverity(t *testing.T) {
+	s, ctx := testStore(t)
+	StateControlledSources = []string{}
+	now := time.Now().Add(-2 * time.Hour)
+
+	// One severity-4 report, single source, tagged with all four countries.
+	a := seed(t, s, ctx, "meduza-en", "regionwide claim", "negative", 4,
+		[]string{"LT", "LV", "EE", "PL"}, now)
+	ev, err := s.CreateEventFor(ctx, a)
+	if err != nil {
+		t.Fatalf("CreateEventFor: %v", err)
+	}
+	if err := s.RefreshEvent(ctx, ev); err != nil {
+		t.Fatalf("RefreshEvent: %v", err)
+	}
+
+	cells, err := s.Summary(ctx)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	seen := 0
+	for _, c := range cells {
+		if c.RecentAdverse == 0 {
+			continue
+		}
+		seen++
+		if c.MaxSeverity != 4 {
+			t.Errorf("%s: MaxSeverity = %d, want 4 — the raw severity is still reported", c.Country, c.MaxSeverity)
+		}
+		if c.MaxSeverityCorroborated != 0 {
+			t.Errorf("%s: MaxSeverityCorroborated = %d, want 0 — one source is not corroboration",
+				c.Country, c.MaxSeverityCorroborated)
+		}
+	}
+	if seen != 4 {
+		t.Fatalf("expected the item to appear for all 4 countries, saw %d", seen)
+	}
+
+	// Corroborate it and the board may call it serious.
+	b := seed(t, s, ctx, "err-news", "regionwide claim", "negative", 4,
+		[]string{"LT", "LV", "EE", "PL"}, now)
+	if err := s.AttachIncident(ctx, b, ev); err != nil {
+		t.Fatalf("AttachIncident: %v", err)
+	}
+	if err := s.RefreshEvent(ctx, ev); err != nil {
+		t.Fatalf("RefreshEvent: %v", err)
+	}
+	cells, err = s.Summary(ctx)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	for _, c := range cells {
+		if c.RecentAdverse > 0 && c.MaxSeverityCorroborated != 4 {
+			t.Errorf("%s: after corroboration MaxSeverityCorroborated = %d, want 4",
+				c.Country, c.MaxSeverityCorroborated)
+		}
+	}
+}

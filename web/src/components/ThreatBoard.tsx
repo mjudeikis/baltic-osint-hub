@@ -14,9 +14,20 @@ const MIN_BASELINE_SAMPLES = 8;
 
 // Mirrors the regional posture rules so the board can never contradict the
 // banner above it: level comes from adverse severity, never from raw volume.
-function level(adverse: number, maxSev: number, favourable: number): Level {
+function level(
+  adverse: number,
+  maxSev: number,
+  favourable: number,
+  pendingSevere = false,
+): Level {
   if (maxSev >= 5) return { label: "Critical", cssVar: "--status-critical", symbol: "▲" };
   if (maxSev >= 4) return { label: "Serious", cssVar: "--status-serious", symbol: "▲" };
+  // A serious report still awaiting a second source holds here rather than
+  // being softened away, exactly as the posture ladder holds it at Elevated.
+  // Without this the banner would read Elevated while every country tile read
+  // Watchful, and the page would contradict itself.
+  if (pendingSevere)
+    return { label: "Unconfirmed", cssVar: "--status-warning", symbol: "△" };
   if (adverse >= 3 && favourable <= adverse)
     return { label: "Elevated", cssVar: "--status-warning", symbol: "△" };
   if (adverse > 0) return { label: "Watchful", cssVar: "--status-good", symbol: "○" };
@@ -46,8 +57,18 @@ export default function ThreatBoard({
         const favourable = sum((r) => r.recent_favourable);
         const baseline = sum((r) => r.baseline);
         const samples = sum((r) => r.baseline_samples);
-        const maxSev = Math.max(0, ...rows.map((r) => r.max_severity ?? 0));
-        const lv = level(adverse, maxSev, favourable);
+        // Corroboration gates the top bands only, exactly as the posture
+        // ladder does — it must not erase the label altogether.
+        //
+        // One uncorroborated report, classified as affecting all four
+        // countries, was marking the whole region "Serious" while the banner
+        // above correctly said the event was still awaiting corroboration.
+        // An uncorroborated severity 4 or 5 is therefore capped at the tier
+        // below; everything at severity 3 or under is unaffected.
+        const rawSev = Math.max(0, ...rows.map((r) => r.max_severity ?? 0));
+        const corrSev = Math.max(0, ...rows.map((r) => r.max_severity_corroborated ?? 0));
+        const maxSev = Math.max(corrSev, Math.min(rawSev, 3));
+        const lv = level(adverse, maxSev, favourable, rawSev >= 4 && corrSev < 4);
 
         // Only compare against the baseline once there is enough of one.
         const comparable = samples >= MIN_BASELINE_SAMPLES && baseline > 0;

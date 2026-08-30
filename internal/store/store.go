@@ -382,6 +382,12 @@ type SummaryCell struct {
 	Baseline         float64 `json:"baseline"`         // avg 7-day count of adverse items over the prior 28 days
 	BaselineSamples  int     `json:"baseline_samples"` // adverse items backing that baseline
 	MaxSeverity      int     `json:"max_severity"`     // max severity among ADVERSE items only
+	// MaxSeverityCorroborated is the same, restricted to events with at least
+	// two independent sources. The board's severity label uses this so it
+	// cannot contradict the posture banner: one uncorroborated item was
+	// labelling all four countries "Serious" while the banner correctly said
+	// the event was still awaiting corroboration.
+	MaxSeverityCorroborated int `json:"max_severity_corroborated"`
 }
 
 // Summary computes per country×category: the last-7-day tone split against an
@@ -395,6 +401,7 @@ func (s *Store) Summary(ctx context.Context) ([]SummaryCell, error) {
 		         max(COALESCE(e.countries, i.countries)) AS countries,
 		         max(COALESCE(e.tone, i.tone)) AS tone,
 		         max(COALESCE(e.severity, i.severity)) AS severity,
+		         max(COALESCE(e.source_count, 2)) >= 2 AS corroborated,
 		         min(COALESCE(e.occurred_at, i.occurred_at)) AS occurred_at
 		  FROM incidents i
 		  LEFT JOIN events e ON e.id = i.event_id
@@ -414,7 +421,9 @@ func (s *Store) Summary(ctx context.Context) ([]SummaryCell, error) {
 		                          AND u.occurred_at <  now() - interval '7 days'
 		                          AND u.tone = 'negative') AS baseline_samples,
 		       COALESCE(max(u.severity) FILTER (WHERE u.occurred_at >= now() - interval '7 days'
-		                          AND u.tone = 'negative'), 0) AS max_sev
+		                          AND u.tone = 'negative'), 0) AS max_sev,
+		       COALESCE(max(u.severity) FILTER (WHERE u.occurred_at >= now() - interval '7 days'
+		                          AND u.tone = 'negative' AND u.corroborated), 0) AS max_sev_corr
 		FROM units u, unnest(u.countries) AS c(country)
 		GROUP BY c.country, u.category`)
 	if err != nil {
@@ -425,7 +434,8 @@ func (s *Store) Summary(ctx context.Context) ([]SummaryCell, error) {
 	for rows.Next() {
 		var c SummaryCell
 		if err := rows.Scan(&c.Country, &c.Category, &c.Recent, &c.RecentAdverse,
-			&c.RecentFavourable, &c.Baseline, &c.BaselineSamples, &c.MaxSeverity); err != nil {
+			&c.RecentFavourable, &c.Baseline, &c.BaselineSamples, &c.MaxSeverity,
+			&c.MaxSeverityCorroborated); err != nil {
 			return nil, err
 		}
 		cells = append(cells, c)
