@@ -20,6 +20,8 @@ import {
   COUNTRIES,
   COUNTRY_NAMES,
   categoryLabel,
+  countryName,
+  toneDef,
 } from "./taxonomy";
 import ThreatBoard from "./components/ThreatBoard";
 import Timeline from "./components/Timeline";
@@ -28,13 +30,15 @@ import Feed from "./components/Feed";
 import SarPanel from "./components/SarPanel";
 import StatusBanner from "./components/StatusBanner";
 import PostureBanner from "./components/PostureBanner";
-import Section from "./components/Section";
+import Section, { revealSection } from "./components/Section";
 import SideNav, { NavItem } from "./components/SideNav";
 import SourcesPanel from "./components/SourcesPanel";
 import Preparedness from "./components/Preparedness";
 
 import {
   DAY_PRESETS,
+  DEFAULT_FILTERS,
+  FilterState,
   exportURL,
   readFilters,
   syncURL,
@@ -51,15 +55,20 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export default function App() {
+  // One filter object rather than five parallel states: it is set from four
+  // places (the strip, board drill-through, timeline clicks, the URL), and a
+  // single value is what makes "clear all" and the chips row trivially honest.
   // Seeded from the URL so a shared link opens on the same view it was copied
   // from, rather than resetting the reader to the default dashboard.
-  const initial = readFilters();
-  const [days, setDays] = useState<number>(initial.days);
-  const [country, setCountry] = useState(initial.country);
-  const [category, setCategory] = useState(initial.category);
-  const [tone, setTone] = useState(initial.tone);
-  const [day, setDay] = useState(initial.day);
+  const [filters, setFilters] = useState<FilterState>(readFilters);
+  const { days, country, category, tone, day } = filters;
+  const patch = (p: Partial<FilterState>) => setFilters((f) => ({ ...f, ...p }));
+
   const [summary, setSummary] = useState<SummaryCell[]>([]);
+  // The board's own adverse list, fixed to the 7-day window the tiles count.
+  // It cannot share `incidents`: that list follows the feed filters, and a
+  // reader narrowing the feed must not empty the headlines on the board.
+  const [boardIncidents, setBoardIncidents] = useState<Incident[]>([]);
   const [timeline, setTimeline] = useState<TimelineBucket[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [sources, setSources] = useState<SourceStatus[]>([]);
@@ -67,7 +76,14 @@ export default function App() {
   const [posture, setPosture] = useState<Posture | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [focusedSite, setFocusedSite] = useState<string | null>(null);
-  const [error, setError] = useState("");
+
+  // Errors are tracked per endpoint so a later success clears exactly the
+  // failure it retried — a single transient blip during a background refresh
+  // must not leave a permanent red banner over a page that has recovered.
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const noteError = (key: string, message: string) =>
+    setErrors((e) => (e[key] === message ? e : { ...e, [key]: message }));
+  const error = Object.values(errors).find(Boolean) ?? "";
 
   // Periodic refresh so a dashboard left open doesn't drift — and so the
   // status banner's "last sync" can't claim freshness the rest of the page
@@ -78,15 +94,20 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  const filters = { days, country, category, tone, day };
   useEffect(() => {
-    syncURL({ days, country, category, tone, day });
-  }, [days, country, category, tone, day]);
+    syncURL(filters);
+  }, [filters]);
 
   useEffect(() => {
     fetchSummary()
-      .then(setSummary)
-      .catch((e) => setError(String(e)));
+      .then((d) => {
+        setSummary(d);
+        noteError("summary", "");
+      })
+      .catch((e) => noteError("summary", String(e)));
+    fetchIncidents({ days: 7, tone: "negative", limit: 200 })
+      .then(setBoardIncidents)
+      .catch(() => {});
     fetchSources()
       .then(setSources)
       .catch(() => {});
@@ -104,8 +125,11 @@ export default function App() {
 
   useEffect(() => {
     fetchTimeline(days, country || undefined)
-      .then(setTimeline)
-      .catch((e) => setError(String(e)));
+      .then((d) => {
+        setTimeline(d);
+        noteError("timeline", "");
+      })
+      .catch((e) => noteError("timeline", String(e)));
     // Posture follows the country filter so it reads for whatever is on screen.
     fetchPosture(country || undefined)
       .then(setPosture)
@@ -120,9 +144,28 @@ export default function App() {
       category: category || undefined,
       tone: tone || undefined,
     })
-      .then(setIncidents)
-      .catch((e) => setError(String(e)));
+      .then((d) => {
+        setIncidents(d);
+        noteError("incidents", "");
+      })
+      .catch((e) => noteError("incidents", String(e)));
   }, [days, country, category, tone, day, refreshKey]);
+
+  // Active filters, rendered as removable chips above the feed. Filters are
+  // set from several places — some silently, like the board drill-through
+  // setting tone — so their current state has to be visible where the results
+  // are read, with one gesture to undo any of it.
+  const chips: { label: string; clear: () => void }[] = [];
+  if (country)
+    chips.push({ label: countryName(country), clear: () => patch({ country: "" }) });
+  if (category)
+    chips.push({ label: categoryLabel(category), clear: () => patch({ category: "" }) });
+  if (tone)
+    chips.push({
+      label: `${toneDef(tone).symbol} ${toneDef(tone).label} only`,
+      clear: () => patch({ tone: "" }),
+    });
+  if (day) chips.push({ label: day, clear: () => patch({ day: "" }) });
 
   return (
     <div className="container">
@@ -153,27 +196,27 @@ export default function App() {
         <main>
           <PostureBanner
             posture={posture}
-            scope={country ? COUNTRY_NAMES[country as never] : ""}
+            scope={country ? countryName(country) : ""}
             meta={meta}
           />
 
           <Section id="board" title="Last 7 days by country">
             <ThreatBoard
               cells={summary}
+              incidents={boardIncidents}
               onSelect={(cc, cat) => {
-                setCountry(cc);
-                setCategory(cat);
-                // The tile counts adverse items, so the feed must match or the
-                // number the reader clicked would not be the number they get.
-                setTone("negative");
-                // Seven days, because the board's numbers are a 7-day count.
-                setDays(7);
-                // A stale single-day selection would leave the feed showing
-                // fewer items than the tile the reader just clicked.
-                setDay("");
-                document
-                  .getElementById("feed")
-                  ?.scrollIntoView({ block: "start" });
+                // The tile counts adverse items over 7 days, so the feed must
+                // match or the number the reader clicked would not be the
+                // number they get. A stale single-day selection would likewise
+                // leave the feed showing fewer items than the tile.
+                patch({
+                  country: cc,
+                  category: cat,
+                  tone: "negative",
+                  days: 7,
+                  day: "",
+                });
+                revealSection("feed");
               }}
             />
           </Section>
@@ -183,14 +226,14 @@ export default function App() {
               <button
                 key={d}
                 aria-pressed={days === d}
-                onClick={() => setDays(d)}
+                onClick={() => patch({ days: d })}
               >
                 {d} days
               </button>
             ))}
             <select
               value={country}
-              onChange={(e) => setCountry(e.target.value)}
+              onChange={(e) => patch({ country: e.target.value })}
               aria-label="Country"
             >
               <option value="">All countries</option>
@@ -202,7 +245,7 @@ export default function App() {
             </select>
             <select
               value={tone}
-              onChange={(e) => setTone(e.target.value)}
+              onChange={(e) => patch({ tone: e.target.value })}
               aria-label="Direction"
             >
               <option value="">All directions</option>
@@ -212,7 +255,7 @@ export default function App() {
             </select>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => patch({ category: e.target.value })}
               aria-label="Category"
             >
               <option value="">All categories</option>
@@ -226,13 +269,13 @@ export default function App() {
 
           <Section
             id="trend"
-            title={`Incidents per day${country ? ` — ${COUNTRY_NAMES[country as never]}` : ""}`}
+            title={`Incidents per day${country ? ` — ${countryName(country)}` : ""}`}
           >
             <Timeline
               buckets={timeline}
               onSelectDay={(d) => {
-                setDay(d);
-                document.getElementById("feed")?.scrollIntoView({ block: "start" });
+                patch({ day: d });
+                revealSection("feed");
               }}
             />
           </Section>
@@ -255,9 +298,7 @@ export default function App() {
               focused={focusedSite}
               onFocus={(key) => {
                 setFocusedSite(key);
-                document
-                  .getElementById("map")
-                  ?.scrollIntoView({ block: "start" });
+                revealSection("map");
               }}
             />
           </Section>
@@ -267,18 +308,31 @@ export default function App() {
             title="Incident feed"
             aside={`${incidents.length} shown${category ? ` · ${categoryLabel(category)}` : ""}`}
           >
-            {day && (
-              <p className="day-filter">
-                Showing <strong>{day}</strong> only.{" "}
-                <button className="linklike" onClick={() => setDay("")}>
-                  show the full range
+            {chips.length > 0 && (
+              <p className="filter-chips" role="group" aria-label="Active filters">
+                <span>Filtered:</span>
+                {chips.map((c) => (
+                  <button
+                    key={c.label}
+                    className="chip-clear"
+                    onClick={c.clear}
+                    title="Remove this filter"
+                  >
+                    {c.label} ✕
+                  </button>
+                ))}
+                <button
+                  className="linklike"
+                  onClick={() => setFilters({ ...DEFAULT_FILTERS })}
+                >
+                  clear all
                 </button>
               </p>
             )}
             {/* Both links carry the filters currently on screen, so what a
                 reader downloads is what they were looking at. */}
             <p className="export-links">
-              Download this view:{" "}
+              Download these filters (up to 500 items):{" "}
               <a href={exportURL("csv", filters)}>CSV</a>
               {" · "}
               <a href={exportURL("geojson", filters)}>GeoJSON</a>

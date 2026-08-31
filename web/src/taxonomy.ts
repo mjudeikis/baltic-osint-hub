@@ -11,6 +11,11 @@ export const COUNTRY_NAMES: Record<Country, string> = {
   PL: "Poland",
 };
 
+// Codes arrive from URLs and API responses as plain strings; fall back to the
+// code itself rather than forcing casts at every call site.
+export const countryName = (code: string): string =>
+  (COUNTRY_NAMES as Record<string, string>)[code] ?? code;
+
 export interface CategoryDef {
   key: string;
   label: string;
@@ -100,3 +105,8 @@ export const SEVERITY_LABELS: Record<number, string> = {
 
 export const severityColor = (sev: number): string =>
   cssColor(`--seq-${Math.min(Math.max(sev, 1), 5)}`);
+
+// The low steps of the severity ramp are light; white text on them fails
+// contrast, so the badge text flips to dark below step 3.
+export const severityTextColor = (sev: number): string =>
+  sev <= 2 ? "#0b0b0b" : "#ffffff";

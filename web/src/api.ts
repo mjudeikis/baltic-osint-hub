@@ -187,8 +187,9 @@ export interface SeaEvent {
   sanctioned?: SanctionedVessel;
   // AIS ship-and-cargo type where known (70s cargo, 80s tanker).
   ship_type?: number;
-  // A listed vessel, or a transponder going dark. Plain loitering is ordinary
-  // maritime behaviour and is kept as baseline rather than shown as a finding.
+  // A listed vessel, or an extended AIS gap (4 h+) by a vessel able to damage
+  // a cable. Plain loitering and short gaps are ordinary — mostly receiver
+  // coverage — and are kept as baseline rather than shown as findings.
   notable: boolean;
 }
 
@@ -228,13 +229,22 @@ export interface Layers {
   sar: SarAOI[];
 }
 
+// Settled per layer: one failing endpoint costs that layer, not the whole map.
 export async function fetchLayers(): Promise<Layers> {
-  const [firms, gpsjam, air, sea, sar] = await Promise.all([
+  const settled = <T>(r: PromiseSettledResult<T[]>): T[] =>
+    r.status === "fulfilled" ? r.value : [];
+  const [firms, gpsjam, air, sea, sar] = await Promise.allSettled([
     get<FIRMSDetection[]>("/api/layers/firms?days=7"),
     get<GpsjamCell[]>("/api/layers/gpsjam"),
     get<AirSighting[]>("/api/layers/air?days=2"),
     get<SeaEvent[]>("/api/layers/sea?days=7"),
     get<SarAOI[]>("/api/layers/sar"),
   ]);
-  return { firms, gpsjam, air, sea, sar };
+  return {
+    firms: settled(firms),
+    gpsjam: settled(gpsjam),
+    air: settled(air),
+    sea: settled(sea),
+    sar: settled(sar),
+  };
 }

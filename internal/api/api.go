@@ -304,23 +304,44 @@ type seaEventOut struct {
 	// ShipType is the AIS ship-and-cargo code where known, so a reader can see
 	// whether a stopped vessel was a tanker or a tug.
 	ShipType *int `json:"ship_type,omitempty"`
-	// Notable marks the events worth showing by default: a listed vessel, or a
-	// transponder going dark. Everything else is ordinary maritime behaviour
-	// and is kept as baseline rather than surfaced as a finding.
+	// Notable marks the events worth showing by default: a listed vessel, or
+	// an extended AIS gap by a vessel capable of damaging a cable. Everything
+	// else is ordinary maritime behaviour and is kept as baseline rather than
+	// surfaced as a finding.
 	Notable bool `json:"notable"`
 }
 
 // notable decides what the dashboard leads with.
 //
-// A week of live data produced 120 sea events, of which 4 involved a
-// sanctioned vessel. Presenting all 120 identically buried those 4. Loitering
-// on its own is not evidence of anything — ships stop constantly, for berths,
-// bunkering, crew transfers and weather — so it stays recorded as the baseline
-// that makes an anomaly meaningful, but it does not claim the reader's
-// attention unless something else is true of it.
-func notable(e store.SeaEvent, listed bool) bool {
-	// Going dark inside a cable corridor is not routine, whoever does it.
-	return listed || e.Event == "ais-gap"
+// A week of live data produced ~500 sea events: 23 involved a listed vessel,
+// 326 were AIS gaps. Treating every gap as a finding drew 330 solid marks and
+// buried the listed vessels all over again — this time under the gap
+// detector. The median unlisted gap is 1.6 h at current receiver coverage,
+// which is a reception dropout, not dark activity; the tail past 4 h is not
+// explained by coverage. So: a listed vessel always leads; an unlisted vessel
+// only for an extended gap, and only when its anchor could actually hurt a
+// cable — cargo, tanker, or unknown type (shadow-fleet vessels often
+// broadcast none). Short gaps, loitering and typed non-cargo traffic stay
+// recorded as the baseline that makes an anomaly meaningful, but they do not
+// claim the reader's attention.
+const extendedGap = 4 * time.Hour
+
+func notable(e store.SeaEvent, listed bool, shipType *int) bool {
+	if listed {
+		return true
+	}
+	if e.Event != "ais-gap" || e.StartedAt == nil {
+		return false
+	}
+	if e.DetectedAt.Sub(*e.StartedAt) < extendedGap {
+		return false
+	}
+	// Typed and known not to be cargo or tanker: ferries, fishing boats and
+	// the like go dark constantly and cannot drag a cable-breaking anchor.
+	if shipType != nil && (*shipType < 70 || *shipType > 89) {
+		return false
+	}
+	return true
 }
 
 func (s *Server) handleSea(w http.ResponseWriter, r *http.Request) {
@@ -359,7 +380,7 @@ func (s *Server) handleSea(w http.ResponseWriter, r *http.Request) {
 			st := t.ShipType
 			o.ShipType = &st
 		}
-		o.Notable = notable(e, isListed)
+		o.Notable = notable(e, isListed, o.ShipType)
 		if notableOnly && !o.Notable {
 			continue
 		}

@@ -1,5 +1,13 @@
-import { SummaryCell } from "../api";
-import { COUNTRIES, COUNTRY_NAMES, categoryLabel, cssColor, TONES } from "../taxonomy";
+import { Incident, SummaryCell } from "../api";
+import {
+  COUNTRIES,
+  COUNTRY_NAMES,
+  categoryLabel,
+  cssColor,
+  severityColor,
+  severityTextColor,
+  TONES,
+} from "../taxonomy";
 
 interface Level {
   label: string;
@@ -34,13 +42,40 @@ function level(
   return { label: "Quiet", cssVar: "--status-good", symbol: "○" };
 }
 
+// How many adverse headlines a tile shows. Enough to name what is behind the
+// count without turning the board into a second feed.
+const TOP_EVENTS = 3;
+
+// The worst events behind a tile's count, one headline per clustered event —
+// an event carried by five outlets is one thing that happened, not five.
+function topEvents(incidents: Incident[], cc: string): Incident[] {
+  const seen = new Set<number>();
+  return incidents
+    .filter((i) => i.countries.includes(cc))
+    .sort(
+      (a, b) =>
+        b.severity - a.severity || b.occurred_at.localeCompare(a.occurred_at),
+    )
+    .filter((i) => {
+      if (i.event_id == null) return true;
+      if (seen.has(i.event_id)) return false;
+      seen.add(i.event_id);
+      return true;
+    })
+    .slice(0, TOP_EVENTS);
+}
+
 export default function ThreatBoard({
   cells,
+  incidents,
   onSelect,
 }: {
   cells: SummaryCell[];
-  // Drill-through: a country/category pair filters the incident feed, so the
-  // numbers on this board lead to the items behind them.
+  // Adverse incidents over the same 7-day window the tiles count, so the
+  // headlines shown are the events behind the number above them.
+  incidents: Incident[];
+  // Drill-through: a country (and optionally a category) filters the incident
+  // feed, so the numbers on this board lead to the items behind them.
   onSelect: (country: string, category: string) => void;
 }) {
   return (
@@ -81,6 +116,8 @@ export default function ThreatBoard({
           .sort((a, b) => b.recent_adverse - a.recent_adverse)
           .slice(0, 3);
 
+        const events = topEvents(incidents, cc);
+
         return (
           <div className="tile" role="listitem" key={cc}>
             <div className="country">
@@ -91,16 +128,32 @@ export default function ThreatBoard({
               </span>
             </div>
 
-            <div className="count">{adverse}</div>
-            <div className="delta">
-              adverse in 7 days
-              {deltaPct !== null
-                ? ` · ${deltaPct >= 0 ? "+" : ""}${deltaPct}% vs prior 4-week avg`
-                : " · baseline still building"}
+            {/* Both directions as one side-by-side pair, each number stated
+                exactly once. Adverse is the board's subject and stays the
+                click-through to the country's feed. */}
+            <div className="tile-pair">
+              <button
+                className="tile-main"
+                onClick={() => onSelect(cc, "")}
+                title={`Show all adverse incidents in ${COUNTRY_NAMES[cc]}`}
+              >
+                <div className="count" style={{ color: cssColor(TONES.negative.cssVar) }}>
+                  {TONES.negative.symbol} {adverse}
+                </div>
+                <div className="delta">adverse</div>
+              </button>
+              <div>
+                <div className="count" style={{ color: cssColor(TONES.positive.cssVar) }}>
+                  {TONES.positive.symbol} {favourable}
+                </div>
+                <div className="delta">favourable</div>
+              </div>
             </div>
-
-            <div className="delta" style={{ marginTop: 4, color: cssColor(TONES.positive.cssVar) }}>
-              {TONES.positive.symbol} {favourable} favourable
+            <div className="delta">
+              in 7 days
+              {deltaPct !== null
+                ? ` · ${deltaPct >= 0 ? "+" : ""}${deltaPct}% adverse vs prior 4-week avg`
+                : " · baseline still building"}
             </div>
 
             <ul>
@@ -117,6 +170,38 @@ export default function ThreatBoard({
                 </li>
               ))}
             </ul>
+
+            {/* The events themselves, worst first — so the reader sees what
+                the count is made of without leaving the board. Headlines link
+                to the source article; the count above drills to the feed. */}
+            {events.length > 0 && (
+              <ul className="tile-events" aria-label={`Top adverse events in ${COUNTRY_NAMES[cc]}`}>
+                {events.map((e) => (
+                  <li key={e.id}>
+                    <span
+                      className="tile-event-sev"
+                      style={{
+                        background: severityColor(e.severity),
+                        color: severityTextColor(e.severity),
+                      }}
+                      title={`Severity ${e.severity}`}
+                    >
+                      S{e.severity}
+                    </span>
+                    {/* The enriched summary, not the headline: titles arrive in
+                        the source language, and the summary is always English. */}
+                    <a
+                      href={e.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={e.summary || e.title}
+                    >
+                      {e.summary || e.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         );
       })}

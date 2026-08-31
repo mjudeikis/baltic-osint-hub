@@ -12,6 +12,20 @@ function readStored(id: string, fallback: boolean): boolean {
   }
 }
 
+// revealSection opens a (possibly collapsed) section and scrolls to it.
+// Every drill-through must use this rather than scrollIntoView alone: a reader
+// who collapsed the feed and then clicks a board tile would otherwise land on
+// a closed header and the click would look dead.
+export function revealSection(id: string) {
+  window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: id }));
+  // Next frame, so an opening section lays out before the scroll measures it.
+  requestAnimationFrame(() =>
+    document.getElementById(id)?.scrollIntoView({ block: "start" }),
+  );
+}
+
+const OPEN_EVENT = "section:open";
+
 export default function Section({
   id,
   title,
@@ -26,6 +40,24 @@ export default function Section({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(() => readStored(id, defaultOpen));
+
+  // Open when navigated to: the sidenav's hash links and revealSection both
+  // target sections that may be collapsed.
+  useEffect(() => {
+    const onHash = () => {
+      if (location.hash === `#${id}`) setOpen(true);
+    };
+    const onOpen = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === id) setOpen(true);
+    };
+    onHash();
+    window.addEventListener("hashchange", onHash);
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+      window.removeEventListener(OPEN_EVENT, onOpen);
+    };
+  }, [id]);
 
   useEffect(() => {
     try {

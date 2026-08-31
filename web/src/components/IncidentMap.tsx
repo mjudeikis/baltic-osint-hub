@@ -3,39 +3,20 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { cellToBoundary, cellToLatLng } from "h3-js";
 import MapLegend from "./MapLegend";
-import { makeIcon, Shape, Swatch } from "../shapes";
+import { makeIcon, Swatch } from "../shapes";
 import { Incident, Layers } from "../api";
+import { INCIDENTS_DEF, MAP_LAYERS, OverlayKey } from "../layers";
 import { categoryLabel, cssColor, severityColor, SEVERITY_LABELS } from "../taxonomy";
 
 // Encoding: incident markers use the sequential blue ramp for severity;
 // jamming cells are a one-hue orange ramp (opacity = share of affected
-// aircraft); thermal/air/sea overlays carry identity via categorical slots
-// (red/violet/green) — never rank-assigned.
-// Shape is the layer's identity and is fixed. Colour reinforces it but never
-// carries it alone — see ../shapes.
-const OVERLAYS = [
-  { key: "jamming", label: "GPS jamming", cssVar: "--series-2", shape: "hex" },
-  { key: "thermal", label: "Thermal (FIRMS)", cssVar: "--series-8", shape: "square" },
-  { key: "air", label: "Air activity", cssVar: "--series-7", shape: "triangle" },
-  { key: "sea", label: "Sea activity", cssVar: "--series-6", shape: "diamond" },
-  // Routine stops are off by default. Ships stop constantly and legitimately,
-  // so drawing every one of them put ~180 marks on the map and buried the
-  // handful that mean something. Kept as an opt-in layer rather than deleted,
-  // because the baseline is what makes an anomaly legible.
-  { key: "searoutine", label: "Sea: routine stops", cssVar: "--series-6", shape: "diamond", hollow: true },
-  { key: "sites", label: "Radar sites", cssVar: "--series-4", shape: "square", hollow: true },
-  { key: "cables", label: "Cables & pipelines", cssVar: "--series-3", shape: "line" },
-  { key: "territory", label: "RU / BY territory", cssVar: "--series-8", shape: "area" },
-] as const satisfies readonly {
-  key: string;
-  label: string;
-  cssVar: string;
-  shape: Shape;
-  // Hollow marks the layers drawn as outlines on the map rather than as
-  // filled marks, so the key matches what is actually rendered.
-  hollow?: boolean;
-}[];
-type OverlayKey = (typeof OVERLAYS)[number]["key"];
+// aircraft); thermal/air/sea overlays carry identity via categorical slots —
+// never rank-assigned. Shape is the layer's identity and is fixed; colour
+// reinforces it but never carries it alone — see ../shapes. Layer identity
+// (key, label, colour, shape) lives in ../layers, shared with the legend.
+
+// The overlays whose map icon is a shape bitmap, registered on load.
+const ICON_LAYERS = ["thermal", "air", "sea", "searoutine"] as const;
 
 const REGION = { latMin: 47, latMax: 63, lonMin: 8, lonMax: 34 };
 
@@ -52,19 +33,14 @@ export default function IncidentMap({
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
-  const markers = useRef<maplibregl.Marker[]>([]);
   const sitePopup = useRef<maplibregl.Popup | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [visible, setVisible] = useState<Record<OverlayKey, boolean>>({
-    jamming: true,
-    thermal: true,
-    air: true,
-    sea: true,
-    searoutine: false,
-    sites: true,
-    cables: true,
-    territory: true,
-  });
+  const [visible, setVisible] = useState<Record<OverlayKey, boolean>>(
+    () =>
+      Object.fromEntries(
+        MAP_LAYERS.map((l) => [l.key, l.defaultVisible]),
+      ) as Record<OverlayKey, boolean>,
+  );
   const [showIncidents, setShowIncidents] = useState(true);
 
   useEffect(() => {
@@ -91,23 +67,23 @@ export default function IncidentMap({
     m.on("load", () => {
       // Register the shape bitmaps before any symbol layer references them.
       // A symbol layer whose icon-image is missing renders nothing at all and
-      // logs only a warning, so this must happen on load, not lazily.
+      // logs only a warning, so this must happen on load, not lazily. Shape
+      // and colour come from the shared layer defs, so the icon on the map is
+      // the icon in the toggles and the legend by construction.
       const surface = cssColor("--surface-1");
-      const icons: [string, Shape, string, boolean][] = [
-        ["sh-thermal", "square", cssColor("--series-8"), true],
-        ["sh-air", "triangle", cssColor("--series-7"), true],
-        ["sh-sea-notable", "diamond", cssColor("--status-warning"), true],
-        ["sh-sea-routine", "diamond", cssColor("--series-6"), false],
-      ];
-      for (const [id, shape, color, filled] of icons) {
+      for (const key of ICON_LAYERS) {
+        const def = MAP_LAYERS.find((l) => l.key === key)!;
+        const id = `sh-${key}`;
         if (m.hasImage(id)) continue;
-        const img = makeIcon(shape, color, filled, surface);
+        const img = makeIcon(def.shape, cssColor(def.cssVar), !def.hollow, surface);
         if (img) m.addImage(id, img, { pixelRatio: 4 });
       }
       setLoaded(true);
     });
     map.current = m;
-    (window as any).__osintMap = m;
+    if ((import.meta as { env?: Record<string, unknown> }).env?.DEV) {
+      (window as unknown as Record<string, unknown>).__osintMap = m;
+    }
     return () => {
       sitePopup.current?.remove();
       sitePopup.current = null;
@@ -117,38 +93,44 @@ export default function IncidentMap({
     };
   }, []);
 
-  // Incident markers (DOM markers stay above canvas layers).
+  // Incidents as a circle layer, like every other data layer: no per-incident
+  // DOM nodes, consistent popup behaviour, and MapLibre handles z-order.
   useEffect(() => {
-    if (!map.current) return;
-    markers.current.forEach((mk) => mk.remove());
-    markers.current = [];
-    if (!showIncidents) return;
-    for (const inc of incidents) {
-      if (inc.lat == null || inc.lon == null) continue;
-      const dot = document.createElement("div");
-      const size = 8 + inc.severity * 2;
-      Object.assign(dot.style, {
-        width: `${size}px`,
-        height: `${size}px`,
-        borderRadius: "50%",
-        background: severityColor(inc.severity),
-        border: "2px solid var(--surface-1)",
-        cursor: "pointer",
+    const m = map.current;
+    if (!m || !loaded) return;
+    setGeoJSON(m, "incidents", pointGeoJSON(incidents, (inc) => ({
+      lon: inc.lon, lat: inc.lat,
+      title: inc.title, place: inc.place ?? "",
+      category: inc.category, severity: inc.severity, url: inc.url,
+    })), () => {
+      m.addLayer({
+        id: "incidents",
+        type: "circle",
+        source: "incidents",
+        paint: {
+          // Same sizing as the legend swatches: radius grows with severity.
+          "circle-radius": ["+", 4, ["get", "severity"]],
+          "circle-color": [
+            "match", ["get", "severity"],
+            1, cssColor("--seq-1"),
+            2, cssColor("--seq-2"),
+            3, cssColor("--seq-3"),
+            4, cssColor("--seq-4"),
+            5, cssColor("--seq-5"),
+            cssColor("--seq-3"),
+          ],
+          "circle-stroke-width": 2,
+          "circle-stroke-color": cssColor("--surface-1"),
+        },
       });
-      const popup = new maplibregl.Popup({ offset: 10, maxWidth: "280px" }).setHTML(
-        `<strong>${esc(inc.title)}</strong><br/>` +
-          (inc.place ? `📍 ${esc(inc.place)}<br/>` : "") +
-          `${categoryLabel(inc.category)} · severity ${inc.severity} (${SEVERITY_LABELS[inc.severity]})<br/>` +
-          `<a href="${esc(inc.url)}" target="_blank" rel="noopener noreferrer">source ↗</a>`,
+      bindPopup(m, "incidents", (p) =>
+        `<strong>${esc(p.title)}</strong><br/>` +
+          (p.place ? `📍 ${esc(p.place)}<br/>` : "") +
+          `${categoryLabel(p.category)} · severity ${p.severity} (${SEVERITY_LABELS[p.severity]})<br/>` +
+          `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">source ↗</a>`,
       );
-      markers.current.push(
-        new maplibregl.Marker({ element: dot })
-          .setLngLat([inc.lon, inc.lat])
-          .setPopup(popup)
-          .addTo(map.current),
-      );
-    }
-  }, [incidents, showIncidents]);
+    });
+  }, [incidents, loaded]);
 
   // Static geographic context, loaded once and drawn beneath the data: which
   // side of the line a thing is on, and what infrastructure runs under the
@@ -286,6 +268,7 @@ export default function IncidentMap({
       lon: s.lon, lat: s.lat,
       name: s.ship_name || String(s.mmsi), event: s.event,
       corridor: s.corridor, sog: s.sog, when: s.detected_at,
+      started: s.started_at ?? "",
       notable: s.notable ? 1 : 0,
       sanctioned: s.sanctioned?.name ?? "",
       risk: s.sanctioned?.risk ?? "",
@@ -301,7 +284,7 @@ export default function IncidentMap({
         source: "sea",
         filter: ["==", ["get", "notable"], 1],
         layout: {
-          "icon-image": "sh-sea-notable",
+          "icon-image": "sh-sea",
           "icon-size": 0.7,
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
@@ -313,23 +296,15 @@ export default function IncidentMap({
         source: "sea",
         filter: ["==", ["get", "notable"], 0],
         layout: {
-          "icon-image": "sh-sea-routine",
+          "icon-image": "sh-searoutine",
           "icon-size": 0.42,
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
           "visibility": "none",
         },
       });
-      bindPopup(m, "searoutine", (p) =>
-        `<strong>⚓ ${esc(p.name)}</strong><br/>${esc(p.event)} · ${esc(p.corridor)} · ${p.sog ?? "?"} kn<br/>${new Date(p.when).toLocaleString("en-GB")}`,
-      );
-      bindPopup(m, "sea", (p) => {
-        const listed = p.sanctioned
-          ? `<br/><strong>⚠ listed:</strong> ${esc(p.sanctioned)}${p.risk ? ` (${esc(p.risk)})` : ""}${p.flag ? ` · flag ${esc(p.flag)}` : ""}` +
-            (p.url ? `<br/><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">OpenSanctions entry</a>` : "")
-          : "";
-        return `<strong>⚓ ${esc(p.name)}</strong><br/>${esc(p.event)} · ${esc(p.corridor)} · ${p.sog ?? "?"} kn<br/>${new Date(p.when).toLocaleString("en-GB")}${listed}`;
-      });
+      bindPopup(m, "searoutine", seaPopup);
+      bindPopup(m, "sea", seaPopup);
     });
 
     // SAR monitored sites: outlined always, filled when the latest pass
@@ -367,13 +342,17 @@ export default function IncidentMap({
           `<a href="${esc(p.browser)}" target="_blank" rel="noopener noreferrer">inspect imagery ↗</a>`,
       );
     });
+
+    // Incidents are the human-reported layer; they stay above every overlay
+    // regardless of which effect happened to create its layers first.
+    if (m.getLayer("incidents")) m.moveLayer("incidents");
   }, [layers, loaded]);
 
   // Visibility toggles.
   useEffect(() => {
     const m = map.current;
     if (!m || !loaded) return;
-    for (const o of OVERLAYS) {
+    for (const o of MAP_LAYERS) {
       // "sites" is drawn as an outline plus a fill; both follow one toggle.
       for (const id of o.key === "sites" ? ["sites", "sites-fill"] : [o.key]) {
         if (m.getLayer(id)) {
@@ -381,7 +360,10 @@ export default function IncidentMap({
         }
       }
     }
-  }, [visible, loaded, layers]);
+    if (m.getLayer("incidents")) {
+      m.setLayoutProperty("incidents", "visibility", showIncidents ? "visible" : "none");
+    }
+  }, [visible, showIncidents, loaded, layers, incidents]);
 
   // Selecting a site in the satellite panel flies the map to it and opens its
   // detail popup, so the panel and the map stay one view rather than two.
@@ -445,21 +427,27 @@ export default function IncidentMap({
     cables: 0,
     territory: 0,
   };
+  // Located only: an incident without a named place gets no pin, so the count
+  // on the toggle is the count on the map, not the count in the feed.
+  const locatedIncidents = incidents.filter(
+    (i) => i.lat != null && i.lon != null,
+  ).length;
 
   return (
     <>
       <div className="filters" role="group" aria-label="Map layers" style={{ marginTop: 0, marginBottom: 10 }}>
         <button aria-pressed={showIncidents} onClick={() => setShowIncidents((v) => !v)}>
-          <Swatch shape="circle" color={cssColor("--seq-3")} />
-          <span style={{ marginLeft: 5 }}>Incidents</span>
+          <Swatch shape={INCIDENTS_DEF.shape} color={cssColor(INCIDENTS_DEF.cssVar)} />
+          <span style={{ marginLeft: 5 }}>{INCIDENTS_DEF.label}</span>
+          {` (${locatedIncidents})`}
         </button>
-        {OVERLAYS.map((o) => (
+        {MAP_LAYERS.map((o) => (
           <button
             key={o.key}
             aria-pressed={visible[o.key]}
             onClick={() => setVisible((v) => ({ ...v, [o.key]: !v[o.key] }))}
           >
-            <Swatch shape={o.shape} color={cssColor(o.cssVar)} filled={!("hollow" in o && o.hollow)} />
+            <Swatch shape={o.shape} color={cssColor(o.cssVar)} filled={!o.hollow} />
             <span style={{ marginLeft: 5 }}>{o.label}</span>
             {o.key !== "cables" && o.key !== "territory" && ` (${counts[o.key]})`}
           </button>
@@ -476,15 +464,28 @@ export default function IncidentMap({
           </span>
         ))}
         <span style={{ color: "var(--text-muted)" }}>
-          incident severity · jamming shading = share of affected aircraft (previous day) ·
-          shape shows the layer: ● incident, ▲ air, ◆ sea, ■ thermal · thermal/air/sea
-          are machine detections, not verified incidents · ◆ sea shows listed vessels and
-          AIS gaps; routine stops are a separate layer, off by default
+          incident severity — shapes, shading and each layer's limits are
+          explained under “What these layers mean”
         </span>
       </div>
       <MapLegend />
     </>
   );
+}
+
+// Shared by the notable and baseline sea layers — the same kind of thing gets
+// the same popup. A gap's length is the difference between a receiver dropout
+// and dark activity, so for gaps the popup states it outright.
+function seaPopup(p: Record<string, any>): string {
+  const dark =
+    p.event === "ais-gap" && p.started
+      ? ` · ${((new Date(p.when).getTime() - new Date(p.started).getTime()) / 3.6e6).toFixed(1)} h dark`
+      : "";
+  const listed = p.sanctioned
+    ? `<br/><strong>⚠ listed:</strong> ${esc(p.sanctioned)}${p.risk ? ` (${esc(p.risk)})` : ""}${p.flag ? ` · flag ${esc(p.flag)}` : ""}` +
+      (p.url ? `<br/><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">OpenSanctions entry</a>` : "")
+    : "";
+  return `<strong>⚓ ${esc(p.name)}</strong><br/>${esc(p.event)}${dark} · ${esc(p.corridor)} · ${p.sog ?? "?"} kn<br/>${new Date(p.when).toLocaleString("en-GB")}${listed}`;
 }
 
 // setGeoJSON updates a source in place, creating source+layer on first use.
@@ -503,16 +504,22 @@ function setGeoJSON(
   create();
 }
 
+// Layers with a popup bound, so overlapping layers can defer to the topmost
+// one — without this, one click over stacked layers opened several popups.
+const popupLayers = new Set<string>();
+
 function bindPopup(
   m: maplibregl.Map,
   layerId: string,
   html: (props: Record<string, any>) => string,
 ) {
+  popupLayers.add(layerId);
   m.on("click", layerId, (e) => {
-    // A marker sits above the canvas; without this the same click would also
-    // open the underlying cell's popup.
-    const target = e.originalEvent?.target as Element | null;
-    if (target?.closest?.(".maplibregl-marker")) return;
+    // Only the topmost popup-bearing layer under the cursor responds.
+    const top = m
+      .queryRenderedFeatures(e.point)
+      .find((f) => popupLayers.has(f.layer.id));
+    if (!top || top.layer.id !== layerId) return;
     const f = e.features?.[0];
     if (!f) return;
     new maplibregl.Popup({ maxWidth: "280px" })

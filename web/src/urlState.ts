@@ -18,6 +18,14 @@ export interface FilterState {
 
 export const DAY_PRESETS = [7, 30, 90] as const;
 
+export const DEFAULT_FILTERS: FilterState = {
+  days: 30,
+  country: "",
+  category: "",
+  tone: "",
+  day: "",
+};
+
 const TONES = ["negative", "positive", "neutral"];
 
 // Values arrive from a URL anyone can edit, so each is checked against the
@@ -32,7 +40,7 @@ export function readFilters(search: string = location.search): FilterState {
   const p = new URLSearchParams(search);
   const days = Number(p.get("days"));
   return {
-    days: (DAY_PRESETS as readonly number[]).includes(days) ? days : 30,
+    days: (DAY_PRESETS as readonly number[]).includes(days) ? days : DEFAULT_FILTERS.days,
     country: oneOf(p.get("country"), COUNTRIES),
     category: oneOf(
       p.get("category"),
@@ -47,7 +55,7 @@ export function readFilters(search: string = location.search): FilterState {
 // chosen, and the bare URL stays clean.
 export function toQuery(f: FilterState): string {
   const p = new URLSearchParams();
-  if (f.days !== 30) p.set("days", String(f.days));
+  if (f.days !== DEFAULT_FILTERS.days) p.set("days", String(f.days));
   if (f.country) p.set("country", f.country);
   if (f.category) p.set("category", f.category);
   if (f.tone) p.set("tone", f.tone);

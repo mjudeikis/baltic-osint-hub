@@ -53,9 +53,11 @@ RSS + GDELT + Telegram + Reddit + Bluesky ──► collector (CronJob, hourly) 
     corridor). Vessels reporting themselves at anchor, moored or aground are
     excluded, as are service craft whose job is holding station (pilot, SAR,
     tug, port tender — 23% of vessels in Finnish waters). Only a listed vessel
-    or an AIS gap is surfaced by default; routine stops are kept as baseline
-    but dimmed. Runs as a persistent stream inside the server (needs a free
-    `AISSTREAM_API_KEY`);
+    or an extended AIS gap (4 h+, by a cargo vessel, tanker or untyped vessel)
+    is surfaced by default — the median corridor gap is ~1.6 h at current
+    receiver coverage, i.e. a dropout, not dark activity. Routine stops and
+    short gaps are kept as baseline but dimmed. Runs as a persistent stream
+    inside the server (needs a free `AISSTREAM_API_KEY`);
   - **AIS archive** — Finnish Digitraffic positions inside the cable corridors,
     polled every 15 min (CC BY 4.0, no key). aisstream is realtime-only, so
     this is the only track history there is. Coverage is the Finnish network:
@@ -177,6 +179,10 @@ Both binaries read `.env` from the working directory (real environment
 variables take precedence); `.env` is git- and docker-ignored.
 
 For frontend iteration run `npm run dev` in `web/` (proxies /api to :8080).
+
+The same steps exist as make targets — `make help` lists them: `make dev`
+(Postgres + frontend build + server), `make dev-web` (Vite hot reload),
+`make collect`, `make test`, `make test-db`.
 
 ### Tests
 

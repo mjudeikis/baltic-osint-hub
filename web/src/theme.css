@@ -349,13 +349,6 @@ a {
   margin-top: 12px;
 }
 
-/* Tone marker in the feed. */
-.tone {
-  font-size: 11.5px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 header.site {
   padding: 16px 0 8px;
 }
@@ -456,6 +449,21 @@ header.site p {
 }
 
 /* Feed */
+/* Day headers carry the date once per group instead of once per row. */
+.feed-day {
+  margin: 18px 0 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.feed-day span {
+  font-weight: 400;
+}
+div > section:first-child > .feed-day {
+  margin-top: 0;
+}
 .feed-item {
   border-top: 1px solid var(--grid);
   padding: 10px 0;
@@ -463,13 +471,19 @@ header.site p {
 .feed-item:first-of-type {
   border-top: none;
 }
+/* Title first — it is what a reader scans; the metadata qualifies it below. */
+.feed-item .title {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
 .feed-item .head {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+  margin-top: 4px;
 }
-.feed-item time,
 .feed-item .src {
   color: var(--text-muted);
   font-size: 12px;
@@ -579,24 +593,6 @@ header.site p {
   border-left-color: var(--surface-1);
 }
 
-footer.site {
-  margin-top: 24px;
-  color: var(--text-muted);
-  font-size: 12.5px;
-}
-footer.site table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-footer.site th,
-footer.site td {
-  text-align: left;
-  padding: 3px 8px 3px 0;
-  border-top: 1px solid var(--grid);
-  font-variant-numeric: tabular-nums;
-}
-
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -632,6 +628,9 @@ footer.site td {
   margin-top: 8px;
   font-size: 12.5px;
 }
+/* A button that reads as a link: used for "reset", "clear all" and "show the
+   full range", which are actions, not navigation, so they must not be
+   anchors. */
 .linklike {
   background: none;
   border: none;
@@ -641,9 +640,8 @@ footer.site td {
   cursor: pointer;
   text-decoration: underline;
 }
-.tile[data-focused] {
-  border-color: var(--series-1);
-  box-shadow: 0 0 0 1px var(--series-1) inset;
+.linklike:hover {
+  opacity: 0.8;
 }
 
 /* Repository link sits at the far end of the status strip. */
@@ -839,6 +837,32 @@ footer.site td {
   .sar-legend dd { margin-bottom: 8px; }
 }
 
+/* Adverse and favourable counts side by side, each stated once. */
+.tile-pair {
+  display: flex;
+  gap: 22px;
+  align-items: flex-end;
+}
+
+/* The tile's big adverse number drills through to the country's feed. */
+.tile-main {
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* The count carries an inline tone colour, so hover feedback lives on the
+   label underneath instead. */
+.tile-main:hover .delta {
+  color: var(--series-1);
+  text-decoration: underline;
+}
+
 /* Category rows in the country tiles drill through to the feed. */
 .tile-drill {
   display: flex;
@@ -860,6 +884,39 @@ footer.site td {
 }
 .tile ul li {
   padding: 0;
+}
+
+/* Adverse event headlines inside a country tile: the events behind the
+   count, worst first. Kept visually quieter than the numbers above. */
+.tile ul.tile-events {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.tile .tile-events li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+}
+.tile .tile-events a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile .tile-events a:hover {
+  color: var(--series-1);
+  text-decoration: underline;
+}
+.tile-event-sev {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 1.5;
 }
 
 .banner-issue {
@@ -890,26 +947,33 @@ footer.site td {
   font-size: 12.5px;
   color: var(--text-secondary);
 }
-.day-filter {
-  margin: 0 0 12px;
+/* Active filters, shown where the results are read. Filters get set from
+   several places (the strip, board tiles, timeline bars), so their state has
+   to be visible at the feed, with one gesture to remove any of it. */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
   font-size: 12.5px;
   color: var(--text-secondary);
 }
-/* A button that reads as a link: used for "reset" and "show the full range",
-   which are actions, not navigation, so they must not be anchors. */
-.linklike {
-  background: none;
-  border: none;
-  padding: 0;
+.chip-clear {
+  background: color-mix(in srgb, var(--series-1) 10%, transparent);
+  border: 1px solid var(--series-1);
+  color: var(--series-1);
+  border-radius: 99px;
+  padding: 2px 10px;
   font: inherit;
-  color: var(--accent, var(--text-primary));
-  text-decoration: underline;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
 }
-.linklike:hover {
-  opacity: 0.8;
+.chip-clear:hover {
+  background: color-mix(in srgb, var(--series-1) 20%, transparent);
 }
-
 /* Map layer legend. Styled to match the satellite legend so the two
    "here is what this means" disclosures read as the same kind of thing. */
 .map-legend {
