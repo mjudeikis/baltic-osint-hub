@@ -396,7 +396,7 @@ a {
   font: inherit;
   text-align: left;
 }
-.section-toggle h2 {
+.section-head h2 {
   margin: 0;
 }
 .chevron {
@@ -407,8 +407,8 @@ a {
 }
 /* Collapsibility needs a cue beyond an 11px glyph: the whole header answers
    the hover, so the toggle reads as a control rather than a smudge. */
-.section-toggle:hover .chevron,
-.section-toggle:hover h2 {
+.section-toggle:hover,
+.section-toggle:hover .chevron {
   color: var(--series-1);
 }
 .chevron[data-open="true"] {
@@ -584,10 +584,6 @@ div > section:first-child > .feed-day {
   color: var(--text-muted);
   font-size: 12px;
 }
-.feed-item .summary {
-  margin: 4px 0 0;
-  color: var(--text-secondary);
-}
 /* Corroboration. Single-source and state-media-only are marked; a
    corroborated event is the unremarkable case and stays quiet. */
 .corrob {
@@ -643,6 +639,31 @@ div > section:first-child > .feed-day {
     display: flex;
     align-items: center;
   }
+  /* Tile category rows are adjacent full-width buttons; without height they
+     are ~19px misclick traps under a thumb. */
+  .tile-drill {
+    min-height: 44px;
+    align-items: center;
+  }
+  /* The permalink glyph is tiny; grow its hit area without moving it. */
+  .permalink {
+    padding: 12px;
+    margin: -12px;
+  }
+}
+
+/* Screen-reader-only content: present in the accessibility tree, never
+   painted. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Keyboard-only path to the timeline's day drill-through: invisible until
@@ -832,11 +853,6 @@ div > section:first-child > .feed-day {
   padding-left: 10px;
 }
 
-.posture-context {
-  margin: 6px 0 0;
-  color: var(--text-primary);
-  font-size: 12.5px;
-}
 .prep-intro {
   margin: 0 0 12px;
   color: var(--text-secondary);

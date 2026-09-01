@@ -421,7 +421,18 @@ export default function IncidentMap({
         [lonMin, latMin],
         [lonMax, latMax],
       ],
-      { padding: 140, maxZoom: 12, duration: document.hidden ? 0 : 900 },
+      {
+        padding: 140,
+        maxZoom: 12,
+        // The one canvas animation on the page follows the same rule as
+        // every CSS transition: gone under reduced motion (and pointless in
+        // a hidden tab, where rAF is throttled anyway).
+        duration:
+          document.hidden ||
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? 0
+            : 900,
+      },
     );
     setVisible((v) => ({ ...v, sites: true }));
 

@@ -90,17 +90,22 @@ export default function Section({
   return (
     <section className="card section" id={id} aria-label={title}>
       <div className="section-head">
-        <button
-          className="section-toggle"
-          aria-expanded={open}
-          aria-controls={`${id}-body`}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <span className="chevron" data-open={open} aria-hidden="true">
-            ▸
-          </span>
-          <h2>{title}</h2>
-        </button>
+        {/* Heading wraps the button, not the reverse: a button's children are
+            presentational to assistive tech, so h2-inside-button erased every
+            section heading from screen-reader navigation. */}
+        <h2>
+          <button
+            className="section-toggle"
+            aria-expanded={open}
+            aria-controls={`${id}-body`}
+            onClick={() => setOpen((v) => !v)}
+          >
+            <span className="chevron" data-open={open} aria-hidden="true">
+              ▸
+            </span>
+            {title}
+          </button>
+        </h2>
         {aside && <div className="section-aside">{aside}</div>}
       </div>
       <div id={`${id}-body`} hidden={!open}>

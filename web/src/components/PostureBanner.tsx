@@ -16,7 +16,7 @@ export default function PostureBanner({
 }) {
   if (!posture) {
     return (
-      <div className="posture" id="posture" aria-busy="true">
+      <div className="posture" id="posture" tabIndex={-1} aria-busy="true">
         <span style={{ color: "var(--text-muted)" }}>Reading regional posture…</span>
       </div>
     );
@@ -28,7 +28,9 @@ export default function PostureBanner({
   const total = positive + neutral + negative;
 
   return (
-    <section className="posture" id="posture" aria-label="Regional posture">
+    // tabIndex -1: the skip link must land keyboard focus here, and a plain
+    // section is not otherwise focusable.
+    <section className="posture" id="posture" tabIndex={-1} aria-label="Regional posture">
       <div className="posture-head">
         <div>
           <div className="posture-eyebrow">

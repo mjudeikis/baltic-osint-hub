@@ -118,6 +118,19 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  // Re-render on an OS theme flip so canvas-rendered colors (Recharts) pick
+  // up the retinted tokens — taxonomy's cache clears on the same event, and
+  // it registered first, so a post-flip render always reads fresh values.
+  // The map's basemap stays init-time; its data colors refresh on the next
+  // layer update.
+  const [, setThemeTick] = useState(0);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => setThemeTick((t) => t + 1);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
   useEffect(() => {
     syncURL(filters);
   }, [filters]);

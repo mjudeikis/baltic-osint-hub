@@ -144,7 +144,7 @@ export default function Timeline({
           <Brush
             dataKey="day"
             height={22}
-            travellerWidth={10}
+            travellerWidth={12}
             stroke={cssColor("--baseline")}
             fill={cssColor("--surface-1")}
             tickFormatter={(d: string) => String(d).slice(5)}
@@ -245,6 +245,32 @@ export default function Timeline({
         Counts events of severity 2 and above. Severity-1 analysis and
         commentary stay in the incident feed but are not counted here.
       </p>
+      {/* The chart's data, as a table only assistive tech sees: Recharts
+          tooltips are hover-only, so per-category values were unreachable
+          without a pointer. */}
+      <table className="sr-only">
+        <caption>Incidents per day by category</caption>
+        <thead>
+          <tr>
+            <th scope="col">Day</th>
+            {series.map((s) => (
+              <th key={s.key} scope="col">
+                {s.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((row) => (
+            <tr key={String(row.day)}>
+              <th scope="row">{String(row.day)}</th>
+              {series.map((s) => (
+                <td key={s.key}>{(row[s.key] as number) ?? 0}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </>
   );
 }

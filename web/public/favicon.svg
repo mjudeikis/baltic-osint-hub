@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The posture ladder: the product's signature mark. Signal Blue reads on
+       both light and dark tab bars. -->
+  <g fill="#2a78d6">
+    <rect x="2"  y="22" width="4" height="8"  rx="1"/>
+    <rect x="9"  y="18" width="4" height="12" rx="1"/>
+    <rect x="16" y="13" width="4" height="17" rx="1"/>
+    <rect x="23" y="7"  width="4" height="23" rx="1"/>
+  </g>
+</svg>
