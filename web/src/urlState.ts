@@ -27,7 +27,9 @@ export const DEFAULT_FILTERS: FilterState = {
   category: "",
   tone: "",
   day: "",
-  sev: 0,
+  // Events-only by default: the feed opens with things that happened, and
+  // severity-1 analysis is one toggle away. The public read wins.
+  sev: 2,
 };
 
 const TONES = ["negative", "positive", "neutral"];
@@ -53,7 +55,14 @@ export function readFilters(search: string = location.search): FilterState {
     ),
     tone: oneOf(p.get("tone"), TONES),
     day: /^\d{4}-\d{2}-\d{2}$/.test(p.get("day") ?? "") ? p.get("day")! : "",
-    sev: Number.isInteger(sev) && sev >= 2 && sev <= 5 ? sev : 0,
+    // 0 (all items) is a deliberate opt-out and must round-trip through the
+    // URL now that the default is 2.
+    sev:
+      p.get("sev") === "0"
+        ? 0
+        : Number.isInteger(sev) && sev >= 2 && sev <= 5
+          ? sev
+          : DEFAULT_FILTERS.sev,
   };
 }
 
@@ -66,7 +75,7 @@ export function toQuery(f: FilterState): string {
   if (f.category) p.set("category", f.category);
   if (f.tone) p.set("tone", f.tone);
   if (f.day) p.set("day", f.day);
-  if (f.sev) p.set("sev", String(f.sev));
+  if (f.sev !== DEFAULT_FILTERS.sev) p.set("sev", String(f.sev));
   const q = p.toString();
   return q ? `?${q}` : "";
 }

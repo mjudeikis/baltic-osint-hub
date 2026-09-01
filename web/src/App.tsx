@@ -239,11 +239,8 @@ export default function App() {
       }),
       clear: () => patch({ day: "" }),
     });
-  if (sev)
-    chips.push({
-      label: `Events only (severity ≥${sev})`,
-      clear: () => patch({ sev: 0 }),
-    });
+  // sev has no chip: unlike the other filters it now has a permanent,
+  // visible control in the strip, so a chip would restate visible state.
 
   return (
     <div className="container">
@@ -352,6 +349,16 @@ export default function App() {
                 </option>
               ))}
             </select>
+            {/* Events-only is the resident default; analysis is opt-in. The
+                severity filter was previously a state only drill-throughs
+                could set — a chip you could remove but never add. */}
+            <button
+              aria-pressed={sev >= 2}
+              onClick={() => patch({ sev: sev >= 2 ? 0 : 2 })}
+              title="Events of severity 2 and above — severity-1 analysis and commentary hidden"
+            >
+              Events only
+            </button>
           </div>
 
           <Section

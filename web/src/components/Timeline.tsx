@@ -33,7 +33,7 @@ export default function Timeline({
   // lifted, because narrowing the view is a reading gesture, not a filter the
   // API needs to know about.
   const [range, setRange] = useState<[number, number] | null>(null);
-  const { data, series } = useMemo(() => {
+  const { data, series, collectionStart } = useMemo(() => {
     const byDay = new Map<string, Record<string, number | string>>();
     for (const b of buckets) {
       const day = b.day.slice(0, 10);
@@ -49,12 +49,17 @@ export default function Timeline({
     // week unusual?" and must occupy their real width. The window starts at
     // the first day with data (a fresh database has no meaningful zeros
     // before collection began) and runs to today with every day present.
+    // When the collector is younger than the window, the chart starts at
+    // first data — but must say so, or a short history inside a long window
+    // reads as a left-to-right escalation ramp.
+    let collectionStart: string | null = null;
     if (byDay.size > 0) {
       const first = [...byDay.keys()].sort()[0];
       const start = new Date(`${first}T00:00:00Z`);
       const windowStart = new Date();
       windowStart.setUTCDate(windowStart.getUTCDate() - (days - 1));
       const from = start > windowStart ? start : windowStart;
+      if (start > windowStart) collectionStart = first;
       for (const d = new Date(from); d <= new Date(); d.setUTCDate(d.getUTCDate() + 1)) {
         const key = d.toISOString().slice(0, 10);
         if (!byDay.has(key)) byDay.set(key, { day: key });
@@ -76,7 +81,7 @@ export default function Timeline({
         if (row[s.key] === undefined) row[s.key] = 0;
       }
     }
-    return { data, series };
+    return { data, series, collectionStart };
   }, [buckets]);
 
   if (data.length === 0) {
@@ -244,6 +249,8 @@ export default function Timeline({
       <p className="brush-hint">
         Counts events of severity 2 and above. Severity-1 analysis and
         commentary stay in the incident feed but are not counted here.
+        {collectionStart &&
+          ` Collection of counted events begins ${collectionStart} — earlier days are uncollected, not quiet.`}
       </p>
       {/* The chart's data, as a table only assistive tech sees: Recharts
           tooltips are hover-only, so per-category values were unreachable

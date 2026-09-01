@@ -14,6 +14,14 @@ export interface Posture {
     negative: number;
     negative_by_severity: number[];
   };
+  // The severity-4/5 event behind an Elevated-or-above reading, so the
+  // headline never says "a serious event" while withholding which one.
+  trigger_event?: {
+    id: number;
+    summary: string;
+    severity: number;
+    corroborated: boolean;
+  };
 }
 
 export const fetchPosture = (country?: string) =>

@@ -178,6 +178,21 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, cells)
 }
 
+// postureOut wraps the reading with the event that set it. A headline saying
+// "a serious adverse event" while withholding which one manufactures the
+// exact "what do they know?" anxiety the dashboard exists to prevent.
+type postureOut struct {
+	posture.Reading
+	TriggerEvent *triggerEvent `json:"trigger_event,omitempty"`
+}
+
+type triggerEvent struct {
+	ID           int64  `json:"id"`
+	Summary      string `json:"summary"`
+	Severity     int    `json:"severity"`
+	Corroborated bool   `json:"corroborated"`
+}
+
 // handlePosture publishes the overall regional reading plus the tone balance
 // it was derived from, so the number is auditable rather than a black box.
 func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +214,46 @@ func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 	if history, err := s.db.WeeklyAdverseHistory(r.Context(), 12); err == nil {
 		reading = reading.WithHistory(history)
 	}
-	s.writeJSON(w, reading)
+	out := postureOut{Reading: reading}
+	// At Elevated and above the level is set by a severity-4/5 event; name
+	// it. Mirrors the rule engine's preference: corroborated first, then
+	// worst severity. Best-effort — a lookup failure degrades to the bare
+	// reading rather than failing the page's headline element.
+	if reading.Level >= posture.Elevated {
+		if list, err := s.db.ListIncidents(r.Context(), store.IncidentFilter{
+			Since:    time.Now().AddDate(0, 0, -7),
+			Tone:     "negative",
+			Severity: 4,
+			Country:  country,
+			Limit:    20,
+		}); err == nil && len(list) > 0 {
+			best := 0
+			score := func(i int) int {
+				n := 0
+				if list[i].IndependentSources != nil && *list[i].IndependentSources >= 2 {
+					n += 10
+				}
+				return n + list[i].Severity
+			}
+			for i := range list {
+				if score(i) > score(best) {
+					best = i
+				}
+			}
+			ev := list[best]
+			summary := ev.SummaryEN
+			if summary == "" {
+				summary = ev.Title
+			}
+			out.TriggerEvent = &triggerEvent{
+				ID:           ev.ID,
+				Summary:      summary,
+				Severity:     ev.Severity,
+				Corroborated: ev.IndependentSources != nil && *ev.IndependentSources >= 2,
+			}
+		}
+	}
+	s.writeJSON(w, out)
 }
 
 // handlePostureHistory serves the trailing daily readings, so the dashboard's

@@ -71,6 +71,17 @@ export default function PostureBanner({
       </div>
 
       <p className="posture-headline">{posture.headline}</p>
+      {/* The headline must never say "a serious event" while withholding
+          which one — an unnamed threat reads as "they know something they
+          are not saying". */}
+      {posture.trigger_event && (
+        <p className="posture-explain">
+          The event: “{posture.trigger_event.summary}” —{" "}
+          <a href={`#incident-${posture.trigger_event.id}`}>
+            view in the feed
+          </a>
+        </p>
+      )}
       {/* The honesty budget: one word (the level), one basis (the headline
           names the rule that set it), one caveat line. Everything else lives
           one click down in "How this level is decided". The line merges the
