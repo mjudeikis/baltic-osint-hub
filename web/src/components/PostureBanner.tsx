@@ -104,8 +104,11 @@ export default function PostureBanner({
             {(["positive", "neutral", "negative"] as const).map((k) => {
               const n = { positive, neutral, negative }[k];
               return (
-                <span key={k} className="key" style={{ color: textColor(TONES[k].cssVar) }}>
-                  {TONES[k].symbol} {n} {TONES[k].label.toLowerCase()}
+                <span key={k} className="key">
+                  <span style={{ color: textColor(TONES[k].cssVar) }}>
+                    {TONES[k].symbol}
+                  </span>{" "}
+                  {n} {TONES[k].label.toLowerCase()}
                 </span>
               );
             })}

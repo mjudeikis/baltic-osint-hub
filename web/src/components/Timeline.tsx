@@ -171,8 +171,9 @@ export default function Timeline({
           show that day in the feed.
         </p>
       )}
-      {/* The bar-click drill-through is pointer-only; this is its keyboard
-          path. Off-screen until focused, then a plain labelled select. */}
+      {/* The bar-click drill-through and the brush are pointer-only; these
+          are their keyboard paths. Off-screen until focused, then plain
+          labelled selects. */}
       {onSelectDay && (
         <div className="sr-day-nav">
           <label htmlFor="timeline-day-picker">Show a single day in the feed:</label>
@@ -198,6 +199,38 @@ export default function Timeline({
           </select>
         </div>
       )}
+      <div className="sr-day-nav">
+        <label htmlFor="timeline-range-from">Narrow the chart range — from:</label>
+        <select
+          id="timeline-range-from"
+          value={from}
+          onChange={(e) => {
+            const i = Number(e.target.value);
+            setRange([Math.min(i, to), Math.max(i, to)]);
+          }}
+        >
+          {data.map((row, i) => (
+            <option key={String(row.day)} value={i}>
+              {String(row.day)}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="timeline-range-to">to:</label>
+        <select
+          id="timeline-range-to"
+          value={to}
+          onChange={(e) => {
+            const j = Number(e.target.value);
+            setRange([Math.min(from, j), Math.max(from, j)]);
+          }}
+        >
+          {data.map((row, i) => (
+            <option key={String(row.day)} value={i}>
+              {String(row.day)}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="legend">
         {series.map((s) => (
           <span className="key" key={s.key}>

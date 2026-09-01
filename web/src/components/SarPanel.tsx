@@ -352,6 +352,11 @@ function Sparkline({
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
+  // The label carries the direction, not just the existence, of the trend —
+  // "a chart is here" tells a screen-reader user nothing.
+  const delta = values[values.length - 1] - values[0];
+  const direction =
+    Math.abs(delta) <= span * 0.15 ? "roughly flat" : delta > 0 ? "rising" : "falling";
   const stroke = cssColor(alert ? "--status-serious" : "--series-1");
   const x = (i: number) => pad + (i / (values.length - 1)) * (w - 2 * pad);
   const y = (v: number) => h - pad - ((v - min) / span) * (h - 2 * pad);
@@ -365,7 +370,7 @@ function Sparkline({
       height={h}
       viewBox={`0 0 ${w} ${h}`}
       role="img"
-      aria-label={`Trend over ${values.length} passes`}
+      aria-label={`Trend over ${values.length} passes: ${direction}`}
       style={{ display: "block" }}
     >
       <path d={d} fill="none" stroke={stroke} strokeWidth={1.5} />

@@ -50,6 +50,18 @@ export default function IncidentMap({
 
   useEffect(() => {
     if (!el.current || map.current) return;
+    // A bright basemap inside a dark page is a glare block at night — the
+    // hour this dashboard gets checked. Rather than a keyed third-party dark
+    // tileset, dark mode dims OpenStreetMap's own tiles at the raster layer:
+    // brightness capped, saturation pulled, so the basemap recedes to a muted
+    // context surface while the data layers above keep full strength. No key,
+    // no extra host, ODbL tiles only. Theme is read once at map init; a
+    // mid-session OS theme flip applies on the next load, same as the page's
+    // other canvas-rendered colors.
+    const darkTheme =
+      document.documentElement.dataset.theme === "dark" ||
+      (document.documentElement.dataset.theme !== "light" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches);
     let m: maplibregl.Map;
     try {
       m = new maplibregl.Map({
@@ -64,7 +76,21 @@ export default function IncidentMap({
               attribution: "© OpenStreetMap contributors",
             },
           },
-          layers: [{ id: "osm", type: "raster", source: "osm" }],
+          layers: [
+            {
+              id: "osm",
+              type: "raster",
+              source: "osm",
+              paint: darkTheme
+                ? {
+                    "raster-brightness-max": 0.4,
+                    "raster-brightness-min": 0.05,
+                    "raster-saturation": -0.55,
+                    "raster-contrast": -0.05,
+                  }
+                : {},
+            },
+          ],
         },
         center: [23.5, 56.5],
         zoom: 4.4,

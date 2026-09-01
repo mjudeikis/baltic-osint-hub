@@ -308,6 +308,9 @@ a {
   gap: 14px;
   margin-top: 6px;
   font-size: 12px;
+  /* Level Voice: the colour lives on the symbol; the words and counts stay
+     neutral, so "11 adverse" is not the only red text in the calm zone. */
+  color: var(--text-secondary);
 }
 
 /* Two-column layout: sticky section nav beside the content. */
@@ -397,10 +400,16 @@ a {
   margin: 0;
 }
 .chevron {
-  color: var(--text-muted);
-  font-size: 11px;
+  color: var(--text-secondary);
+  font-size: 12px;
   transition: transform 0.15s ease;
   display: inline-block;
+}
+/* Collapsibility needs a cue beyond an 11px glyph: the whole header answers
+   the hover, so the toggle reads as a control rather than a smudge. */
+.section-toggle:hover .chevron,
+.section-toggle:hover h2 {
+  color: var(--series-1);
 }
 .chevron[data-open="true"] {
   transform: rotate(90deg);
@@ -551,6 +560,18 @@ div > section:first-child > .feed-day {
   display: flex;
   gap: 8px;
   align-items: baseline;
+}
+/* Titles read as content, not chrome: ink at rest with a quiet underline,
+   Signal Blue on hover/focus. 200 blue links made interface chrome the
+   page's largest chromatic mass, straining the One Channel Rule. */
+.feed-item .title > a:first-child {
+  color: var(--text-primary);
+  text-decoration-color: var(--baseline);
+}
+.feed-item .title > a:first-child:hover,
+.feed-item .title > a:first-child:focus-visible {
+  color: var(--series-1);
+  text-decoration-color: currentColor;
 }
 .feed-item .head {
   display: flex;

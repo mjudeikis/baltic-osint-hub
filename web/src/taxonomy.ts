@@ -48,8 +48,30 @@ export const categoryColor = (key: string): string => {
 
 // Resolve a CSS custom property to its current computed value (recharts and
 // maplibre need concrete colors, not var() references).
+//
+// Cached: a 200-row feed render resolves tokens ~800 times, and each
+// getComputedStyle call is a style-recalc hazard on the phones least able to
+// afford one. The cache empties when the theme changes, so post-flip renders
+// pick up the new values.
+const colorCache = new Map<string, string>();
+
 export function cssColor(varName: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  let v = colorCache.get(varName);
+  if (v === undefined) {
+    v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    colorCache.set(varName, v);
+  }
+  return v;
+}
+
+if (typeof window !== "undefined") {
+  window
+    .matchMedia("(prefers-color-scheme: dark)")
+    .addEventListener("change", () => colorCache.clear());
+  new MutationObserver(() => colorCache.clear()).observe(
+    document.documentElement,
+    { attributes: true, attributeFilter: ["data-theme"] },
+  );
 }
 
 // The status hues fail contrast as text on light surfaces; every place a

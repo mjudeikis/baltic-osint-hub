@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   fetchIncidents,
   fetchLayers,
@@ -24,9 +24,13 @@ import {
   toneDef,
 } from "./taxonomy";
 import ThreatBoard from "./components/ThreatBoard";
-import Timeline from "./components/Timeline";
-import IncidentMap from "./components/IncidentMap";
 import Feed from "./components/Feed";
+
+// The two heaviest dependencies — Recharts (~400 KB) and MapLibre (~700 KB)
+// — load as separate chunks so the posture card and board render from a
+// small core bundle. On 3G the five-second read must not wait for a map.
+const Timeline = lazy(() => import("./components/Timeline"));
+const IncidentMap = lazy(() => import("./components/IncidentMap"));
 import SarPanel from "./components/SarPanel";
 import StatusBanner from "./components/StatusBanner";
 import PostureBanner from "./components/PostureBanner";
@@ -63,6 +67,10 @@ export default function App() {
   const [filters, setFilters] = useState<FilterState>(readFilters);
   const { days, country, category, tone, day, sev } = filters;
   const patch = (p: Partial<FilterState>) => setFilters((f) => ({ ...f, ...p }));
+  // A drill-through overwrites several filters at once; "clear all" honestly
+  // resets to defaults, but the reader's pre-drill view deserves its own way
+  // back. Snapshot taken at each drill, offered beside the chips.
+  const [preDrill, setPreDrill] = useState<FilterState | null>(null);
 
   // Data states start as null, not [] — before the first response the page
   // must read as "loading", never as a fabricated quiet week. Rendering an
@@ -273,6 +281,7 @@ export default function App() {
                 // leave the feed showing fewer items than the tile.
                 // sev: 2 mirrors the tile counts (analysis excluded), so the
                 // number clicked equals the number of rows shown.
+                setPreDrill(filters);
                 patch({
                   country: cc,
                   category: cat,
@@ -342,25 +351,42 @@ export default function App() {
               </p>
             ) : (
               <div className={timelineBusy ? "refetching" : undefined} aria-busy={timelineBusy}>
+                <Suspense
+                  fallback={
+                    <p style={{ color: "var(--text-muted)" }} aria-busy="true">
+                      Loading the incident trend…
+                    </p>
+                  }
+                >
                 <Timeline
                   buckets={timeline}
                   days={days}
                   onSelectDay={(d) => {
+                    setPreDrill(filters);
                     patch({ day: d });
                     revealSection("feed");
                   }}
                 />
+                </Suspense>
               </div>
             )}
           </Section>
 
           <Section id="map" title="Situation map">
-            <IncidentMap
-              incidents={incidents ?? []}
-              layers={layers}
-              focusedSite={focusedSite}
-              onFocusHandled={() => setFocusedSite(null)}
-            />
+            <Suspense
+              fallback={
+                <p style={{ color: "var(--text-muted)" }} aria-busy="true">
+                  Loading the map…
+                </p>
+              }
+            >
+              <IncidentMap
+                incidents={incidents ?? []}
+                layers={layers}
+                focusedSite={focusedSite}
+                onFocusHandled={() => setFocusedSite(null)}
+              />
+            </Suspense>
           </Section>
 
           <Section
@@ -409,6 +435,17 @@ export default function App() {
                 >
                   clear all
                 </button>
+                {preDrill && (
+                  <button
+                    className="linklike"
+                    onClick={() => {
+                      setFilters(preDrill);
+                      setPreDrill(null);
+                    }}
+                  >
+                    ← back to previous view
+                  </button>
+                )}
               </p>
             )}
             {/* Both links carry the filters currently on screen, so what a
