@@ -148,8 +148,10 @@ func TestRulesMatchEvaluate(t *testing.T) {
 	}{
 		{"a corroborated adverse event at severity 5",
 			Counts{Negative: 1, NegativeBySeverity: sev(0, 0, 0, 0, 1), CorroboratedBySeverity: corr(sev(0, 0, 0, 0, 1))}, Severe},
-		{"a corroborated adverse event at severity 4",
-			Counts{Negative: 1, NegativeBySeverity: sev(0, 0, 0, 1), CorroboratedBySeverity: corr(sev(0, 0, 0, 1))}, High},
+		{"2 or more distinct corroborated adverse events at severity 4",
+			Counts{Negative: 2, NegativeBySeverity: sev(0, 0, 0, 2), CorroboratedBySeverity: corr(sev(0, 0, 0, 2))}, High},
+		{"a single corroborated adverse event at severity 4",
+			Counts{Negative: 1, NegativeBySeverity: sev(0, 0, 0, 1), CorroboratedBySeverity: corr(sev(0, 0, 0, 1))}, Elevated},
 		{"an adverse event at severity 4 or 5 reported by only one source",
 			Counts{Negative: 1, NegativeBySeverity: sev(0, 0, 0, 1)}, Elevated},
 		{"3 or more adverse events at severity 3",
@@ -241,20 +243,39 @@ func TestSingleSourceSevereCannotReachHigh(t *testing.T) {
 	}
 }
 
-// Corroborate the same event and it does reach High, and stays there.
-func TestCorroboratedSevereReachesHighAndHolds(t *testing.T) {
+// Two distinct corroborated serious events reach High, and stay there.
+func TestTwoCorroboratedSevereReachHighAndHold(t *testing.T) {
 	c := Counts{
-		Positive: 28, Neutral: 16, Negative: 11,
-		NegativeBySeverity:     sev(2, 6, 2, 1),
-		CorroboratedBySeverity: sev(2, 6, 2, 1),
+		Positive: 28, Neutral: 16, Negative: 12,
+		NegativeBySeverity:     sev(2, 6, 2, 2),
+		CorroboratedBySeverity: sev(2, 6, 2, 2),
 	}
 	got := Evaluate(c)
 	if got.Level != High {
-		t.Fatalf("level = %s, want High once corroborated", got.LevelName)
+		t.Fatalf("level = %s, want High with two distinct corroborated serious events", got.LevelName)
 	}
 	// Immune to the down-step even in a heavily favourable week.
 	if got.Counts.Positive <= got.Counts.Negative {
 		t.Fatal("test setup should have favourable outnumbering adverse")
+	}
+}
+
+// The persistence rule: severity-4 incidents recur most weeks, so one alone
+// must not pin the region at High — that ratchet is how advisory scales die.
+// A single corroborated serious event holds at Elevated, says why, and is
+// immune to the good-news down-step (it was held down by persistence, not
+// mildness).
+func TestSingleCorroboratedSeriousHoldsAtElevated(t *testing.T) {
+	got := Evaluate(Counts{
+		Positive: 33, Neutral: 19, Negative: 11,
+		NegativeBySeverity:     sev(2, 6, 2, 1),
+		CorroboratedBySeverity: sev(2, 6, 2, 1),
+	})
+	if got.Level != Elevated {
+		t.Fatalf("level = %s, want Elevated — one recurring-pattern serious event must not carry High alone", got.LevelName)
+	}
+	if !contains(got.Headline, "single event") {
+		t.Errorf("headline = %q, want it to say a single event holds the reading", got.Headline)
 	}
 }
 
@@ -281,7 +302,7 @@ func TestCorroborationCountIsNeverAboveTheTotal(t *testing.T) {
 		NegativeBySeverity:     sev(0, 0, 0, 1),
 		CorroboratedBySeverity: sev(0, 0, 0, 1),
 	})
-	if got.Level != High {
-		t.Errorf("level = %s, want High", got.LevelName)
+	if got.Level != Elevated {
+		t.Errorf("level = %s, want Elevated — a single corroborated serious event holds by the persistence rule", got.LevelName)
 	}
 }

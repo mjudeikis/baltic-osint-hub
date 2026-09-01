@@ -14,6 +14,9 @@ export interface FilterState {
   // Shareable like every other filter — "what happened on the 12th" is exactly
   // the kind of view someone wants to send to a colleague.
   day: string;
+  // Minimum severity, or 0 for all. Board drill-throughs set 2 so the feed
+  // count equals the tile count (which excludes severity-1 analysis).
+  sev: number;
 }
 
 export const DAY_PRESETS = [7, 30, 90] as const;
@@ -24,6 +27,7 @@ export const DEFAULT_FILTERS: FilterState = {
   category: "",
   tone: "",
   day: "",
+  sev: 0,
 };
 
 const TONES = ["negative", "positive", "neutral"];
@@ -39,6 +43,7 @@ function oneOf(value: string | null, allowed: readonly string[]): string {
 export function readFilters(search: string = location.search): FilterState {
   const p = new URLSearchParams(search);
   const days = Number(p.get("days"));
+  const sev = Number(p.get("sev"));
   return {
     days: (DAY_PRESETS as readonly number[]).includes(days) ? days : DEFAULT_FILTERS.days,
     country: oneOf(p.get("country"), COUNTRIES),
@@ -48,6 +53,7 @@ export function readFilters(search: string = location.search): FilterState {
     ),
     tone: oneOf(p.get("tone"), TONES),
     day: /^\d{4}-\d{2}-\d{2}$/.test(p.get("day") ?? "") ? p.get("day")! : "",
+    sev: Number.isInteger(sev) && sev >= 2 && sev <= 5 ? sev : 0,
   };
 }
 
@@ -60,6 +66,7 @@ export function toQuery(f: FilterState): string {
   if (f.category) p.set("category", f.category);
   if (f.tone) p.set("tone", f.tone);
   if (f.day) p.set("day", f.day);
+  if (f.sev) p.set("sev", String(f.sev));
   const q = p.toString();
   return q ? `?${q}` : "";
 }
@@ -83,6 +90,7 @@ export function exportURL(kind: "csv" | "geojson", f: FilterState): string {
   if (f.category) p.set("category", f.category);
   if (f.tone) p.set("tone", f.tone);
   if (f.day) p.set("day", f.day);
+  if (f.sev) p.set("severity", String(f.sev));
   p.set("limit", "500");
   return `/api/incidents.${kind}?${p}`;
 }

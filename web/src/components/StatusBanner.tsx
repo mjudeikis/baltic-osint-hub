@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SourceStatus } from "../api";
-import { cssColor } from "../taxonomy";
+import { cssColor, textColor } from "../taxonomy";
 
 // The collector runs hourly, so anything much past that means collection has
 // stopped rather than simply being between runs.
@@ -31,16 +31,17 @@ export default function StatusBanner({ sources }: { sources: SourceStatus[] }) {
   const failing = sources.filter((s) => s.error);
   const age = lastRun ? Date.now() - lastRun.getTime() : Infinity;
 
+  // ◆/◇ are status-alarm glyphs; ▲/▼ are reserved for tone direction.
   const status =
     age > CRITICAL_AFTER_MS
-      ? { label: "Collection stalled", symbol: "▲", cssVar: "--status-critical" }
+      ? { label: "Collection stalled", symbol: "◆", cssVar: "--status-critical" }
       : age > STALE_AFTER_MS
-        ? { label: "Data may be stale", symbol: "△", cssVar: "--status-warning" }
+        ? { label: "Data may be stale", symbol: "◇", cssVar: "--status-warning" }
         : { label: "Live", symbol: "●", cssVar: "--status-good" };
 
   return (
     <div className="banner" role="status">
-      <span className="level" style={{ color: cssColor(status.cssVar) }}>
+      <span className="level" style={{ color: textColor(status.cssVar) }}>
         <span className="dot" style={{ background: cssColor(status.cssVar) }} />
         {status.symbol} {status.label}
       </span>
@@ -51,10 +52,16 @@ export default function StatusBanner({ sources }: { sources: SourceStatus[] }) {
       <span className="banner-sep">·</span>
       <span>
         {sources.length - failing.length}/{sources.length} sources OK
-        {failing.length > 0 && (
-          <span title={failing.map((f) => f.source).join(", ")}>
+        {/* Hover-only titles are invisible to touch and screen readers, so
+            few names appear inline; long lists defer to the Sources table,
+            which spells every error out. */}
+        {failing.length > 0 && failing.length <= 3 && (
+          <span> (failing: {failing.map((f) => f.source).join(", ")})</span>
+        )}
+        {failing.length > 3 && (
+          <span>
             {" "}
-            ({failing.length} failing)
+            ({failing.length} failing — <a href="#sources">see Sources</a>)
           </span>
         )}
       </span>

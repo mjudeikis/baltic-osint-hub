@@ -145,7 +145,8 @@ type Rule struct {
 func Rules() []Rule {
 	return []Rule{
 		{int(Severe), Severe.String(), "a corroborated adverse event at severity 5"},
-		{int(High), High.String(), "a corroborated adverse event at severity 4"},
+		{int(High), High.String(), "2 or more distinct corroborated adverse events at severity 4"},
+		{int(Elevated), Elevated.String(), "a single corroborated adverse event at severity 4"},
 		{int(Elevated), Elevated.String(), "an adverse event at severity 4 or 5 reported by only one source"},
 		{int(Elevated), Elevated.String(), "3 or more adverse events at severity 3"},
 		{int(Watchful), Watchful.String(), "any adverse event at severity 3, or 5 or more adverse events at any severity"},
@@ -159,6 +160,7 @@ func Rules() []Rule {
 func Adjustments() []string {
 	return []string{
 		"\"Corroborated\" means at least two independent sources carried it. State-controlled outlets never count toward corroboration.",
+		"A single corroborated serious event holds at Elevated: severity-4 incidents recur most weeks in this region, and a scale one recurring incident type can pin at High stops meaning anything. High requires a second distinct serious event in the same week; severity 5 reaches Severe alone.",
 		"A serious event resting on a single source holds at Elevated and says so, rather than being promoted to High or hidden.",
 		"Elevated steps down to Watchful when favourable developments outnumber adverse ones.",
 		"High and Severe never step down: a serious event stands on its own regardless of good news elsewhere. Neither does an uncorroborated serious event, which has already been held down once.",
@@ -185,13 +187,26 @@ func Evaluate(c Counts) Reading {
 	uncorroboratedSevere := (c.NegativeBySeverity[5] - c.CorroboratedBySeverity[5]) +
 		(c.NegativeBySeverity[4] - c.CorroboratedBySeverity[4])
 
+	// A single corroborated severity-4 event holds at Elevated rather than
+	// High. Severity-4 incidents — intercepts, jamming spikes, sabotage
+	// attempts — recur most weeks in this region; if any one of them could
+	// carry High alone, High would become the permanent state and readers
+	// would calibrate it away (the exact ratchet failure the Trend comment
+	// below describes). High therefore requires persistence: a second
+	// distinct serious event in the same week. Severity 5 stands alone —
+	// a critical event needs no company to matter.
+	singleSerious := c.CorroboratedBySeverity[5] == 0 && c.CorroboratedBySeverity[4] == 1
+
 	switch {
 	case c.CorroboratedBySeverity[5] > 0:
 		r.Level = Severe
 		r.Headline = "Critical adverse event in the last 7 days"
-	case c.CorroboratedBySeverity[4] > 0:
+	case c.CorroboratedBySeverity[4] >= 2:
 		r.Level = High
-		r.Headline = pluralise(c.CorroboratedBySeverity[4], "serious adverse event", "serious adverse events") + " in the last 7 days"
+		r.Headline = pluralise(c.CorroboratedBySeverity[4], "serious adverse event", "distinct serious adverse events") + " in the last 7 days"
+	case singleSerious:
+		r.Level = Elevated
+		r.Headline = "A corroborated serious adverse event in the last 7 days — a single event holds the reading at Elevated"
 	case uncorroboratedSevere > 0:
 		// Serious, but resting on one outlet. Held at Elevated and said out
 		// loud, rather than either hidden or promoted to High.
@@ -219,8 +234,10 @@ func Evaluate(c Counts) Reading {
 	//
 	// An uncorroborated serious event is also immune. It has already been held
 	// down from High; stepping it down again would bury the very thing the
-	// reader most needs to know is pending.
-	if r.Level == Elevated && uncorroboratedSevere == 0 && c.Positive > c.Negative {
+	// reader most needs to know is pending. The same holds for a single
+	// corroborated serious event: it was held at Elevated by the persistence
+	// rule, not by mildness, and must not sink further on good news.
+	if r.Level == Elevated && uncorroboratedSevere == 0 && !singleSerious && c.Positive > c.Negative {
 		r.Level = Watchful
 		r.Headline = "Adverse activity offset by defensive progress"
 	}

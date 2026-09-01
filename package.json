@@ -1,0 +1,11 @@
+{
+  "name": "baltic-osint-hub-tooling",
+  "private": true,
+  "description": "Dev tooling deps only (impeccable design detector parsers). The app lives in web/; the backend is Go.",
+  "devDependencies": {
+    "css-select": "^7.0.0",
+    "css-tree": "^3.2.1",
+    "domutils": "^4.0.2",
+    "htmlparser2": "^12.0.0"
+  }
+}

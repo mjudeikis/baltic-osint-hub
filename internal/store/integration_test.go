@@ -294,7 +294,7 @@ func TestSummaryAndTimelineCountEvents(t *testing.T) {
 		t.Fatalf("RefreshEvent: %v", err)
 	}
 
-	cells, err := s.Summary(ctx)
+	cells, err := s.Summary(ctx, 1)
 	if err != nil {
 		t.Fatalf("Summary: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestSummaryAndTimelineCountEvents(t *testing.T) {
 		t.Errorf("summary adverse = %d, want 1", total)
 	}
 
-	buckets, err := s.Timeline(ctx, time.Now().AddDate(0, 0, -7), "")
+	buckets, err := s.Timeline(ctx, time.Now().AddDate(0, 0, -7), "", 1)
 	if err != nil {
 		t.Fatalf("Timeline: %v", err)
 	}
@@ -316,6 +316,32 @@ func TestSummaryAndTimelineCountEvents(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("timeline count = %d, want 1", n)
+	}
+
+	// A severity-1 analysis piece is in the feed but, at min severity 2, not
+	// in the counts — an op-ed is not an event.
+	seed(t, s, ctx, "cepa", "analysis piece", "negative", 1, []string{"LT"}, now)
+	cells, err = s.Summary(ctx, 2)
+	if err != nil {
+		t.Fatalf("Summary(min 2): %v", err)
+	}
+	total = 0
+	for _, c := range cells {
+		total += c.RecentAdverse
+	}
+	if total != 1 {
+		t.Errorf("summary adverse at min severity 2 = %d, want 1 (analysis excluded)", total)
+	}
+	buckets, err = s.Timeline(ctx, time.Now().AddDate(0, 0, -7), "", 2)
+	if err != nil {
+		t.Fatalf("Timeline(min 2): %v", err)
+	}
+	n = 0
+	for _, b := range buckets {
+		n += b.Count
+	}
+	if n != 1 {
+		t.Errorf("timeline count at min severity 2 = %d, want 1 (analysis excluded)", n)
 	}
 }
 
@@ -666,7 +692,7 @@ func TestSummaryReportsCorroboratedSeverity(t *testing.T) {
 		t.Fatalf("RefreshEvent: %v", err)
 	}
 
-	cells, err := s.Summary(ctx)
+	cells, err := s.Summary(ctx, 1)
 	if err != nil {
 		t.Fatalf("Summary: %v", err)
 	}
@@ -697,7 +723,7 @@ func TestSummaryReportsCorroboratedSeverity(t *testing.T) {
 	if err := s.RefreshEvent(ctx, ev); err != nil {
 		t.Fatalf("RefreshEvent: %v", err)
 	}
-	cells, err = s.Summary(ctx)
+	cells, err = s.Summary(ctx, 1)
 	if err != nil {
 		t.Fatalf("Summary: %v", err)
 	}

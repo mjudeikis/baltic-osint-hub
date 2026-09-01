@@ -61,16 +61,19 @@ export default function App() {
   // Seeded from the URL so a shared link opens on the same view it was copied
   // from, rather than resetting the reader to the default dashboard.
   const [filters, setFilters] = useState<FilterState>(readFilters);
-  const { days, country, category, tone, day } = filters;
+  const { days, country, category, tone, day, sev } = filters;
   const patch = (p: Partial<FilterState>) => setFilters((f) => ({ ...f, ...p }));
 
-  const [summary, setSummary] = useState<SummaryCell[]>([]);
+  // Data states start as null, not [] — before the first response the page
+  // must read as "loading", never as a fabricated quiet week. Rendering an
+  // empty board or feed during load violates "no data is no data".
+  const [summary, setSummary] = useState<SummaryCell[] | null>(null);
   // The board's own adverse list, fixed to the 7-day window the tiles count.
   // It cannot share `incidents`: that list follows the feed filters, and a
   // reader narrowing the feed must not empty the headlines on the board.
   const [boardIncidents, setBoardIncidents] = useState<Incident[]>([]);
-  const [timeline, setTimeline] = useState<TimelineBucket[]>([]);
-  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [timeline, setTimeline] = useState<TimelineBucket[] | null>(null);
+  const [incidents, setIncidents] = useState<Incident[] | null>(null);
   const [sources, setSources] = useState<SourceStatus[]>([]);
   const [layers, setLayers] = useState<Layers | null>(null);
   const [posture, setPosture] = useState<Posture | null>(null);
@@ -83,7 +86,20 @@ export default function App() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const noteError = (key: string, message: string) =>
     setErrors((e) => (e[key] === message ? e : { ...e, [key]: message }));
-  const error = Object.values(errors).find(Boolean) ?? "";
+  // Plain words, not endpoint paths: the reader needs to know which part of
+  // the page is affected and that it will fix itself, not the status code.
+  const FAILED_LABEL: Record<string, string> = {
+    summary: "the country board",
+    timeline: "the trend chart",
+    incidents: "the incident feed",
+    posture: "the posture reading",
+    sources: "the collection status",
+    board: "the board headlines",
+    layers: "the map signal layers",
+  };
+  const failedParts = Object.entries(errors)
+    .filter(([, msg]) => Boolean(msg))
+    .map(([key]) => FAILED_LABEL[key] ?? key);
 
   // Periodic refresh so a dashboard left open doesn't drift — and so the
   // status banner's "last sync" can't claim freshness the rest of the page
@@ -105,15 +121,26 @@ export default function App() {
         noteError("summary", "");
       })
       .catch((e) => noteError("summary", String(e)));
-    fetchIncidents({ days: 7, tone: "negative", limit: 200 })
-      .then(setBoardIncidents)
-      .catch(() => {});
+    // severity 2+, matching the tile counts: the headlines shown must be the
+    // events behind the numbers, and analysis pieces are not counted there.
+    fetchIncidents({ days: 7, tone: "negative", severity: 2, limit: 200 })
+      .then((d) => {
+        setBoardIncidents(d);
+        noteError("board", "");
+      })
+      .catch((e) => noteError("board", String(e)));
     fetchSources()
-      .then(setSources)
-      .catch(() => {});
+      .then((d) => {
+        setSources(d);
+        noteError("sources", "");
+      })
+      .catch((e) => noteError("sources", String(e)));
     fetchLayers()
-      .then(setLayers)
-      .catch(() => {});
+      .then((d) => {
+        setLayers(d);
+        noteError("layers", "");
+      })
+      .catch((e) => noteError("layers", String(e)));
   }, [refreshKey]);
 
   // The taxonomy and the posture rules are static per deploy; fetched once.
@@ -123,33 +150,49 @@ export default function App() {
       .catch(() => {});
   }, []);
 
+  // Refetch-in-flight flags: stale rows dim rather than posing as current
+  // while a filter change is loading (see .refetching).
+  const [timelineBusy, setTimelineBusy] = useState(false);
+  const [feedBusy, setFeedBusy] = useState(false);
+
   useEffect(() => {
+    setTimelineBusy(true);
     fetchTimeline(days, country || undefined)
       .then((d) => {
         setTimeline(d);
         noteError("timeline", "");
       })
-      .catch((e) => noteError("timeline", String(e)));
-    // Posture follows the country filter so it reads for whatever is on screen.
+      .catch((e) => noteError("timeline", String(e)))
+      .finally(() => setTimelineBusy(false));
+    // Posture follows the country filter so it reads for whatever is on
+    // screen. Its failure must never be silent: this is the one element the
+    // visitor came for, and a swallowed error left "Reading regional
+    // posture…" on screen forever.
     fetchPosture(country || undefined)
-      .then(setPosture)
-      .catch(() => {});
+      .then((d) => {
+        setPosture(d);
+        noteError("posture", "");
+      })
+      .catch((e) => noteError("posture", String(e)));
   }, [days, country, refreshKey]);
 
   useEffect(() => {
+    setFeedBusy(true);
     fetchIncidents({
       days,
       day: day || undefined,
       country: country || undefined,
       category: category || undefined,
       tone: tone || undefined,
+      severity: sev || undefined,
     })
       .then((d) => {
         setIncidents(d);
         noteError("incidents", "");
       })
-      .catch((e) => noteError("incidents", String(e)));
-  }, [days, country, category, tone, day, refreshKey]);
+      .catch((e) => noteError("incidents", String(e)))
+      .finally(() => setFeedBusy(false));
+  }, [days, country, category, tone, day, sev, refreshKey]);
 
   // Active filters, rendered as removable chips above the feed. Filters are
   // set from several places — some silently, like the board drill-through
@@ -165,28 +208,47 @@ export default function App() {
       label: `${toneDef(tone).symbol} ${toneDef(tone).label} only`,
       clear: () => patch({ tone: "" }),
     });
-  if (day) chips.push({ label: day, clear: () => patch({ day: "" }) });
+  if (day)
+    chips.push({
+      // Same date voice as the feed's day headers, not raw ISO.
+      label: new Date(day).toLocaleDateString("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+      }),
+      clear: () => patch({ day: "" }),
+    });
+  if (sev)
+    chips.push({
+      label: `Events only (severity ≥${sev})`,
+      clear: () => patch({ sev: 0 }),
+    });
 
   return (
     <div className="container">
+      <a className="skip-link" href="#posture">
+        Skip to the posture reading
+      </a>
       <StatusBanner sources={sources} />
 
       <header className="site">
         <h1>Baltic OSINT Hub</h1>
         <p>
           Open-source tracking of hybrid-threat activity affecting Lithuania,
-          Latvia, Estonia, and Poland — aggregated from public news, CERT, and
-          research feeds.
+          Latvia, Estonia, and Poland — aggregated from public news, national
+          cyber-security teams (CERTs), and research feeds.
         </p>
       </header>
 
-      {error && (
+      {failedParts.length > 0 && (
         <div
           className="card"
           role="alert"
-          style={{ color: "var(--status-critical)" }}
+          style={{ color: "var(--status-critical-text)" }}
         >
-          Failed to load data: {error}
+          Part of the page could not be loaded: {failedParts.join(", ")}.
+          Everything else is current, and the dashboard retries automatically
+          every few minutes.
         </div>
       )}
 
@@ -209,12 +271,15 @@ export default function App() {
                 // match or the number the reader clicked would not be the
                 // number they get. A stale single-day selection would likewise
                 // leave the feed showing fewer items than the tile.
+                // sev: 2 mirrors the tile counts (analysis excluded), so the
+                // number clicked equals the number of rows shown.
                 patch({
                   country: cc,
                   category: cat,
                   tone: "negative",
                   days: 7,
                   day: "",
+                  sev: 2,
                 });
                 revealSection("feed");
               }}
@@ -271,18 +336,27 @@ export default function App() {
             id="trend"
             title={`Incidents per day${country ? ` — ${countryName(country)}` : ""}`}
           >
-            <Timeline
-              buckets={timeline}
-              onSelectDay={(d) => {
-                patch({ day: d });
-                revealSection("feed");
-              }}
-            />
+            {timeline === null ? (
+              <p style={{ color: "var(--text-muted)" }} aria-busy="true">
+                Loading the incident trend…
+              </p>
+            ) : (
+              <div className={timelineBusy ? "refetching" : undefined} aria-busy={timelineBusy}>
+                <Timeline
+                  buckets={timeline}
+                  days={days}
+                  onSelectDay={(d) => {
+                    patch({ day: d });
+                    revealSection("feed");
+                  }}
+                />
+              </div>
+            )}
           </Section>
 
           <Section id="map" title="Situation map">
             <IncidentMap
-              incidents={incidents}
+              incidents={incidents ?? []}
               layers={layers}
               focusedSite={focusedSite}
               onFocusHandled={() => setFocusedSite(null)}
@@ -306,7 +380,15 @@ export default function App() {
           <Section
             id="feed"
             title="Incident feed"
-            aside={`${incidents.length} shown${category ? ` · ${categoryLabel(category)}` : ""}`}
+            aside={
+              // aria-live so a drill-through from the board or timeline is
+              // announced — the view changes, and focus alone can't say how.
+              <span aria-live="polite">
+                {incidents === null
+                  ? "loading…"
+                  : `${incidents.length} shown${category ? ` · ${categoryLabel(category)}` : ""}`}
+              </span>
+            }
           >
             {chips.length > 0 && (
               <p className="filter-chips" role="group" aria-label="Active filters">
@@ -341,7 +423,15 @@ export default function App() {
                 — GeoJSON covers located incidents only.
               </span>
             </p>
-            <Feed incidents={incidents} />
+            {incidents === null ? (
+              <p style={{ color: "var(--text-muted)" }} aria-busy="true">
+                Loading incidents…
+              </p>
+            ) : (
+              <div className={feedBusy ? "refetching" : undefined} aria-busy={feedBusy}>
+                <Feed incidents={incidents} />
+              </div>
+            )}
           </Section>
 
           <Section id="prepare" title="How to prepare">

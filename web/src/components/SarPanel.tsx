@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { SarAOI } from "../api";
-import { cssColor } from "../taxonomy";
+import { cssColor, textColor } from "../taxonomy";
 
 // A compact, filterable table rather than one card per site: at ~50 sites the
 // card layout buried the two rows that actually needed attention.
@@ -15,8 +15,11 @@ function statusOf(a: SarAOI): StatusKey {
   return "nominal";
 }
 
+// ◆/◇ are the status-alarm glyphs; ▲/▼ belong exclusively to tone direction
+// (favourable/adverse), so a colorblind reader never sees one glyph meaning
+// both good and bad on the same page.
 const STATUS: Record<StatusKey, { label: string; symbol: string; cssVar: string }> = {
-  flagged: { label: "Change detected", symbol: "▲", cssVar: "--status-serious" },
+  flagged: { label: "Change detected", symbol: "◆", cssVar: "--status-serious" },
   shifted: { label: "Conditions changed", symbol: "◌", cssVar: "--status-warning" },
   baselining: { label: "Baselining", symbol: "○", cssVar: "--text-muted" },
   nominal: { label: "Nominal", symbol: "○", cssVar: "--status-good" },
@@ -49,6 +52,10 @@ export default function SarPanel({
   const [classFilter, setClassFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusKey | "">("");
   const [countryFilter, setCountryFilter] = useState("");
+  // Nominal rows collapse by default: with ~50 sites the wall's job is the
+  // two rows needing attention plus an honest count, not a permanent
+  // garrison roll-call. The full table is one click away.
+  const [showNominal, setShowNominal] = useState(false);
 
   const rows = useMemo(
     () =>
@@ -74,8 +81,9 @@ export default function SarPanel({
   if (rows.every((r) => r.aoi.series.length === 0)) {
     return (
       <p style={{ color: "var(--text-muted)" }}>
-        No radar measurements yet — add Copernicus credentials and run the collector.
-        The first run backfills 180 days of history, so baselines are usable immediately.
+        No radar measurements yet — satellite monitoring is still starting up.
+        The first collection backfills 180 days of history, so site baselines
+        appear as soon as it completes.
       </p>
     );
   }
@@ -87,6 +95,13 @@ export default function SarPanel({
       (!countryFilter || r.aoi.country === countryFilter),
   );
   const filtered = Boolean(classFilter || statusFilter || countryFilter);
+  // Nominal rows stay collapsed unless explicitly requested (the "nominal"
+  // count-filter or the show-all toggle both count as asking).
+  const nominalHidden =
+    !showNominal && statusFilter === ""
+      ? shown.filter((r) => r.status === "nominal").length
+      : 0;
+  const visible = nominalHidden > 0 ? shown.filter((r) => r.status !== "nominal") : shown;
 
   return (
     <>
@@ -102,7 +117,7 @@ export default function SarPanel({
               aria-pressed={statusFilter === k}
               onClick={() => setStatusFilter(statusFilter === k ? "" : k)}
             >
-              <span style={{ color: cssColor(STATUS[k].cssVar) }}>{STATUS[k].symbol}</span>{" "}
+              <span style={{ color: textColor(STATUS[k].cssVar) }}>{STATUS[k].symbol}</span>{" "}
               {counts[k]} {STATUS[k].label.toLowerCase()}
             </button>
           ) : null,
@@ -184,19 +199,19 @@ export default function SarPanel({
           history.
         </p>
         <dl>
-          <dt style={{ color: cssColor("--status-serious") }}>▲ Change detected</dt>
+          <dt style={{ color: textColor("--status-serious") }}>◆ Change detected</dt>
           <dd>
             The latest pass is well above the site's own baseline, and the rise is not
             explained by the scene getting brighter overall. A prompt to open the
             imagery — not a confirmed deployment.
           </dd>
-          <dt style={{ color: cssColor("--status-warning") }}>◌ Conditions changed</dt>
+          <dt style={{ color: textColor("--status-warning") }}>◌ Conditions changed</dt>
           <dd>
             The pass was taken under conditions unlike anything in the reference period
             — rain, harvest, snow or sea state — so no honest comparison is possible.
             Deliberately neither an alarm nor an all-clear.
           </dd>
-          <dt style={{ color: cssColor("--status-good") }}>○ Nominal</dt>
+          <dt style={{ color: textColor("--status-good") }}>○ Nominal</dt>
           <dd>In line with its own recent history.</dd>
           <dt style={{ color: cssColor("--text-muted") }}>○ Baselining</dt>
           <dd>
@@ -219,17 +234,20 @@ export default function SarPanel({
           <thead>
             <tr>
               <th>Site</th>
+              {/* Status beside Site: the verdict is the table's point, and on
+                  narrow screens the last column fell off the horizontal
+                  scroll unnoticed. */}
+              <th>Status</th>
               <th>Baseline</th>
               <th className="num">Depth</th>
               <th className="num">Now</th>
               <th className="num">Typical</th>
               <th>Trend</th>
-              <th>Status</th>
               <th aria-label="Imagery" />
             </tr>
           </thead>
           <tbody>
-            {shown.map(({ aoi, status }) => (
+            {visible.map(({ aoi, status }) => (
               <tr key={aoi.key} data-focused={focused === aoi.key || undefined}>
                 <td>
                   <button
@@ -242,6 +260,11 @@ export default function SarPanel({
                   <div className="sar-sub">
                     {aoi.country} · {aoi.kind}
                   </div>
+                </td>
+                <td>
+                  <span className="level" style={{ color: textColor(STATUS[status].cssVar) }}>
+                    {STATUS[status].symbol} {STATUS[status].label}
+                  </span>
                 </td>
                 <td>
                   <span className="site-class" data-class={aoi.class}>
@@ -260,19 +283,15 @@ export default function SarPanel({
                     <Sparkline series={aoi.series} alert={status === "flagged"} />
                   )}
                 </td>
-                <td>
-                  <span className="level" style={{ color: cssColor(STATUS[status].cssVar) }}>
-                    {STATUS[status].symbol} {STATUS[status].label}
-                  </span>
-                </td>
                 <td className="num">
                   <a
                     href={aoi.browser_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    title="Inspect the imagery"
+                    title="Inspect the imagery in the Copernicus Browser"
+                    aria-label={`Inspect imagery for ${aoi.label}`}
                   >
-                    🛰
+                    imagery&nbsp;↗
                   </a>
                 </td>
               </tr>
@@ -281,7 +300,23 @@ export default function SarPanel({
         </table>
       </div>
 
-      {shown.length === 0 && (
+      {nominalHidden > 0 && (
+        <p className="sar-summary" style={{ marginTop: 8 }}>
+          <button className="linklike" onClick={() => setShowNominal(true)}>
+            {nominalHidden} nominal {nominalHidden === 1 ? "site" : "sites"} in
+            line with their own history — show all
+          </button>
+        </p>
+      )}
+      {showNominal && statusFilter === "" && (
+        <p className="sar-summary" style={{ marginTop: 8 }}>
+          <button className="linklike" onClick={() => setShowNominal(false)}>
+            hide nominal sites
+          </button>
+        </p>
+      )}
+
+      {visible.length === 0 && nominalHidden === 0 && (
         <p style={{ color: "var(--text-muted)" }}>No sites match these filters.</p>
       )}
 

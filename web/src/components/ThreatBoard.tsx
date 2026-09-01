@@ -6,6 +6,7 @@ import {
   cssColor,
   severityColor,
   severityTextColor,
+  textColor,
   TONES,
 } from "../taxonomy";
 
@@ -22,22 +23,24 @@ const MIN_BASELINE_SAMPLES = 8;
 
 // Mirrors the regional posture rules so the board can never contradict the
 // banner above it: level comes from adverse severity, never from raw volume.
+// Status glyphs are the ◆/◇/○ family; ▲/▼ belong exclusively to tone
+// direction, so one glyph never means "favourable" and "alarm" on one page.
 function level(
   adverse: number,
   maxSev: number,
   favourable: number,
   pendingSevere = false,
 ): Level {
-  if (maxSev >= 5) return { label: "Critical", cssVar: "--status-critical", symbol: "▲" };
-  if (maxSev >= 4) return { label: "Serious", cssVar: "--status-serious", symbol: "▲" };
+  if (maxSev >= 5) return { label: "Critical", cssVar: "--status-critical", symbol: "◆" };
+  if (maxSev >= 4) return { label: "Serious", cssVar: "--status-serious", symbol: "◆" };
   // A serious report still awaiting a second source holds here rather than
   // being softened away, exactly as the posture ladder holds it at Elevated.
   // Without this the banner would read Elevated while every country tile read
   // Watchful, and the page would contradict itself.
   if (pendingSevere)
-    return { label: "Unconfirmed", cssVar: "--status-warning", symbol: "△" };
+    return { label: "Unconfirmed", cssVar: "--status-warning", symbol: "◇" };
   if (adverse >= 3 && favourable <= adverse)
-    return { label: "Elevated", cssVar: "--status-warning", symbol: "△" };
+    return { label: "Elevated", cssVar: "--status-warning", symbol: "◇" };
   if (adverse > 0) return { label: "Watchful", cssVar: "--status-good", symbol: "○" };
   return { label: "Quiet", cssVar: "--status-good", symbol: "○" };
 }
@@ -70,7 +73,10 @@ export default function ThreatBoard({
   incidents,
   onSelect,
 }: {
-  cells: SummaryCell[];
+  // null while the first response is in flight. Rendering an empty array
+  // there would paint four "Quiet / 0 adverse" tiles — a fabricated all-clear
+  // on every slow connection.
+  cells: SummaryCell[] | null;
   // Adverse incidents over the same 7-day window the tiles count, so the
   // headlines shown are the events behind the number above them.
   incidents: Incident[];
@@ -78,7 +84,15 @@ export default function ThreatBoard({
   // feed, so the numbers on this board lead to the items behind them.
   onSelect: (country: string, category: string) => void;
 }) {
+  if (cells === null) {
+    return (
+      <p style={{ color: "var(--text-muted)" }} aria-busy="true">
+        Loading the last 7 days…
+      </p>
+    );
+  }
   return (
+    <>
     <div className="board" role="list" aria-label="Adverse activity by country">
       {COUNTRIES.map((cc) => {
         const rows = cells.filter((c) => c.country === cc);
@@ -122,7 +136,7 @@ export default function ThreatBoard({
           <div className="tile" role="listitem" key={cc}>
             <div className="country">
               <span>{COUNTRY_NAMES[cc]}</span>
-              <span className="level" style={{ color: cssColor(lv.cssVar) }}>
+              <span className="level" style={{ color: textColor(lv.cssVar) }}>
                 <span className="dot" style={{ background: cssColor(lv.cssVar) }} />
                 {lv.symbol} {lv.label}
               </span>
@@ -137,13 +151,13 @@ export default function ThreatBoard({
                 onClick={() => onSelect(cc, "")}
                 title={`Show all adverse incidents in ${COUNTRY_NAMES[cc]}`}
               >
-                <div className="count" style={{ color: cssColor(TONES.negative.cssVar) }}>
+                <div className="count" style={{ color: textColor(TONES.negative.cssVar) }}>
                   {TONES.negative.symbol} {adverse}
                 </div>
                 <div className="delta">adverse</div>
               </button>
               <div>
-                <div className="count" style={{ color: cssColor(TONES.positive.cssVar) }}>
+                <div className="count" style={{ color: textColor(TONES.positive.cssVar) }}>
                   {TONES.positive.symbol} {favourable}
                 </div>
                 <div className="delta">favourable</div>
@@ -206,5 +220,41 @@ export default function ThreatBoard({
         );
       })}
     </div>
+
+    {/* The tile labels are a country's own 7-day reading, not the regional
+        posture above — and "Unconfirmed" in particular must be defined where
+        it appears, because under a tense news cycle an unexplained
+        "unconfirmed" reads as "they know something they cannot say". */}
+    <details className="posture-rules">
+      <summary>What these labels mean</summary>
+      <p>
+        Each tile is that country's own last 7 days, set by the severity of
+        corroborated adverse events — not by how many articles were written.
+        It is a narrower reading than the regional posture banner above, so
+        the two use different words. Counts cover events of severity 2 and
+        above; severity-1 analysis and commentary stay in the feed but are
+        not counted as events.
+      </p>
+      <ul>
+        <li>
+          <strong>Quiet / Watchful</strong> — no adverse events, or only minor
+          ones.
+        </li>
+        <li>
+          <strong>Elevated</strong> — several adverse events and little
+          favourable news to offset them.
+        </li>
+        <li>
+          <strong>Unconfirmed</strong> — a serious report exists but only one
+          independent source carries it so far. It is held here rather than
+          escalated: not dismissed, not yet confirmed.
+        </li>
+        <li>
+          <strong>Serious / Critical</strong> — at least one corroborated
+          severity&nbsp;4 or 5 event this week.
+        </li>
+      </ul>
+    </details>
+    </>
   );
 }

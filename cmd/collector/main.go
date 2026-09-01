@@ -81,7 +81,10 @@ func snapshotPosture(ctx context.Context, log *slog.Logger, db *store.Store) {
 	if history, err := db.WeeklyAdverseHistory(ctx, 12); err == nil {
 		reading = reading.WithHistory(history)
 	}
-	summary, err := db.Summary(ctx)
+	// min severity 2, matching the dashboard's board: the archived snapshot
+	// should record what the page showed, and severity-1 commentary is not
+	// counted as an event there.
+	summary, err := db.Summary(ctx, 2)
 	if err != nil {
 		log.Error("snapshot: summary", "err", err)
 		summary = nil

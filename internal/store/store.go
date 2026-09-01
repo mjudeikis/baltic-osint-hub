@@ -335,12 +335,15 @@ type TimelineBucket struct {
 }
 
 // Timeline returns daily incident counts per category since the given time,
-// optionally filtered to one country.
-func (s *Store) Timeline(ctx context.Context, since time.Time, country string) ([]TimelineBucket, error) {
+// optionally filtered to one country. minSeverity, when above 1, drops units
+// below that severity — the dashboard uses 2 so severity-1 commentary and
+// analysis pieces never inflate a chart titled "incidents".
+func (s *Store) Timeline(ctx context.Context, since time.Time, country string, minSeverity int) ([]TimelineBucket, error) {
 	q := `WITH units AS (
 	        SELECT ` + unitExpr + ` AS unit,
 	               max(COALESCE(e.category, i.category)) AS category,
 	               max(COALESCE(e.countries, i.countries)) AS countries,
+	               max(COALESCE(e.severity, i.severity)) AS severity,
 	               min(COALESCE(e.occurred_at, i.occurred_at)) AS occurred_at
 	        FROM incidents i
 	        LEFT JOIN events e ON e.id = i.event_id
@@ -353,6 +356,10 @@ func (s *Store) Timeline(ctx context.Context, since time.Time, country string) (
 	if country != "" {
 		q += ` AND $2 = ANY(countries)`
 		args = append(args, country)
+	}
+	if minSeverity > 1 {
+		q += fmt.Sprintf(` AND severity >= $%d`, len(args)+1)
+		args = append(args, minSeverity)
 	}
 	q += ` GROUP BY day, category ORDER BY day`
 	rows, err := s.pool.Query(ctx, q, args...)
@@ -393,7 +400,10 @@ type SummaryCell struct {
 // Summary computes per country×category: the last-7-day tone split against an
 // adverse-only baseline. Severity and baseline deliberately ignore favourable
 // items, so a week of defence announcements cannot inflate a threat reading.
-func (s *Store) Summary(ctx context.Context) ([]SummaryCell, error) {
+// minSeverity, when above 1, drops units below that severity from every count
+// (recent, baseline, and max alike, so the numbers stay comparable) — the
+// dashboard uses 2 so commentary never counts as an event.
+func (s *Store) Summary(ctx context.Context, minSeverity int) ([]SummaryCell, error) {
 	rows, err := s.pool.Query(ctx, `
 		WITH units AS (
 		  SELECT `+unitExpr+` AS unit,
@@ -425,7 +435,8 @@ func (s *Store) Summary(ctx context.Context) ([]SummaryCell, error) {
 		       COALESCE(max(u.severity) FILTER (WHERE u.occurred_at >= now() - interval '7 days'
 		                          AND u.tone = 'negative' AND u.corroborated), 0) AS max_sev_corr
 		FROM units u, unnest(u.countries) AS c(country)
-		GROUP BY c.country, u.category`)
+		WHERE u.severity >= $1
+		GROUP BY c.country, u.category`, max(minSeverity, 1))
 	if err != nil {
 		return nil, err
 	}

@@ -17,10 +17,16 @@ export interface MapLayerDef {
   defaultVisible: boolean;
 }
 
+// Machine-measured layers use the muted --layer-* instrument family, never
+// the categorical slots: those hues carry fixed category meanings (orange =
+// sabotage, red = undersea infrastructure) in every chart and chip on the
+// page, and a jamming cell wearing sabotage's orange lied to anyone who had
+// learned the vocabulary. Desaturation also says "detection, not event" at a
+// glance — the epistemic split the legend used to carry in prose alone.
 export const MAP_LAYERS = [
-  { key: "jamming", label: "GPS jamming", cssVar: "--series-2", shape: "hex", hollow: false, defaultVisible: true },
-  { key: "thermal", label: "Thermal (FIRMS)", cssVar: "--series-8", shape: "square", hollow: false, defaultVisible: true },
-  { key: "air", label: "Air activity", cssVar: "--series-7", shape: "triangle", hollow: false, defaultVisible: true },
+  { key: "jamming", label: "GPS jamming", cssVar: "--layer-jamming", shape: "hex", hollow: false, defaultVisible: true },
+  { key: "thermal", label: "Thermal (FIRMS)", cssVar: "--layer-thermal", shape: "square", hollow: false, defaultVisible: true },
+  { key: "air", label: "Air activity", cssVar: "--layer-air", shape: "triangle", hollow: false, defaultVisible: true },
   // Notable sea events are deliberately drawn in the warning colour — a listed
   // vessel or an extended AIS gap is a status, not just an identity — so the
   // toggle and legend show the warning colour too.
@@ -30,10 +36,10 @@ export const MAP_LAYERS = [
   // coverage far more often than dark activity — drawing them all buried the
   // handful of marks that mean something. Kept as an opt-in layer rather than
   // deleted, because the baseline is what makes an anomaly legible.
-  { key: "searoutine", label: "Sea: baseline", cssVar: "--series-6", shape: "diamond", hollow: true, defaultVisible: false },
-  { key: "sites", label: "Radar sites", cssVar: "--series-4", shape: "square", hollow: true, defaultVisible: true },
-  { key: "cables", label: "Cables & pipelines", cssVar: "--series-3", shape: "line", hollow: false, defaultVisible: true },
-  { key: "territory", label: "RU / BY territory", cssVar: "--series-8", shape: "area", hollow: false, defaultVisible: true },
+  { key: "searoutine", label: "Sea: baseline", cssVar: "--layer-searoutine", shape: "diamond", hollow: true, defaultVisible: false },
+  { key: "sites", label: "Radar sites", cssVar: "--layer-sites", shape: "square", hollow: true, defaultVisible: true },
+  { key: "cables", label: "Cables & pipelines", cssVar: "--layer-cable", shape: "line", hollow: false, defaultVisible: true },
+  { key: "territory", label: "RU / BY territory", cssVar: "--layer-territory", shape: "area", hollow: false, defaultVisible: true },
 ] as const satisfies readonly MapLayerDef[];
 
 export type OverlayKey = (typeof MAP_LAYERS)[number]["key"];

@@ -19,9 +19,16 @@ function readStored(id: string, fallback: boolean): boolean {
 export function revealSection(id: string) {
   window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: id }));
   // Next frame, so an opening section lays out before the scroll measures it.
-  requestAnimationFrame(() =>
-    document.getElementById(id)?.scrollIntoView({ block: "start" }),
-  );
+  requestAnimationFrame(() => {
+    const sec = document.getElementById(id);
+    sec?.scrollIntoView({ block: "start" });
+    // Move keyboard focus with the view: without this a screen-reader user
+    // who activates a drill-through stays on the tile they clicked and hears
+    // nothing about the section the page just jumped to.
+    sec
+      ?.querySelector<HTMLElement>(".section-toggle")
+      ?.focus({ preventScroll: true });
+  });
 }
 
 const OPEN_EVENT = "section:open";
@@ -40,6 +47,14 @@ export default function Section({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(() => readStored(id, defaultOpen));
+  // Children of a collapsed section aren't mounted until it first opens: a
+  // reader who keeps the map collapsed should not pay for MapLibre and its
+  // tile fetches. Once opened, children stay mounted so state survives
+  // re-collapse.
+  const [everOpen, setEverOpen] = useState(open);
+  useEffect(() => {
+    if (open) setEverOpen(true);
+  }, [open]);
 
   // Open when navigated to: the sidenav's hash links and revealSection both
   // target sections that may be collapsed.
@@ -89,7 +104,7 @@ export default function Section({
         {aside && <div className="section-aside">{aside}</div>}
       </div>
       <div id={`${id}-body`} hidden={!open}>
-        {children}
+        {everOpen ? children : null}
       </div>
     </section>
   );

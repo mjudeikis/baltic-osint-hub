@@ -146,12 +146,22 @@ type incidentOut struct {
 	ConfidenceLabel string `json:"confidence_label,omitempty"`
 }
 
+// minSeverityParam reads the optional min_severity filter. Default 1 keeps
+// the public API's behaviour unchanged; the dashboard passes 2 so severity-1
+// commentary is not counted as an incident.
+func minSeverityParam(r *http.Request) int {
+	if v, err := strconv.Atoi(r.URL.Query().Get("min_severity")); err == nil && v >= 1 && v <= 5 {
+		return v
+	}
+	return 1
+}
+
 func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	days := 90
 	if v, err := strconv.Atoi(r.URL.Query().Get("days")); err == nil && v > 0 && v <= 365 {
 		days = v
 	}
-	buckets, err := s.db.Timeline(r.Context(), time.Now().AddDate(0, 0, -days), r.URL.Query().Get("country"))
+	buckets, err := s.db.Timeline(r.Context(), time.Now().AddDate(0, 0, -days), r.URL.Query().Get("country"), minSeverityParam(r))
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -160,7 +170,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
-	cells, err := s.db.Summary(r.Context())
+	cells, err := s.db.Summary(r.Context(), minSeverityParam(r))
 	if err != nil {
 		s.fail(w, err)
 		return

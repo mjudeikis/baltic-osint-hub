@@ -53,13 +53,19 @@ export default function SourcesPanel({ sources }: { sources: SourceStatus[] }) {
               .sort((a, b) => a.source.localeCompare(b.source))
               .map((s) => (
                 <tr key={s.source}>
-                  <td>{s.source}</td>
+                  <td>
+                    {s.source}
+                    {/* The error text itself, not a hover title: touch and
+                        screen-reader users get the same detail. */}
+                    {s.error && <div className="sar-sub">{s.error}</div>}
+                  </td>
                   <td>{new Date(s.last_run).toLocaleString("en-GB")}</td>
                   <td>{s.items_found}</td>
                   <td>{s.items_new}</td>
                   <td
-                    style={{ color: s.error ? "var(--status-critical)" : undefined }}
-                    title={s.error || undefined}
+                    style={{
+                      color: s.error ? "var(--status-critical-text)" : undefined,
+                    }}
                   >
                     {s.error ? "error" : "ok"}
                   </td>

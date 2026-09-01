@@ -80,7 +80,9 @@ const BUILD = (import.meta as { env?: Record<string, string> }).env?.VITE_BUILD_
 
 async function get<T>(path: string): Promise<T> {
   const url = path + (path.includes("?") ? "&" : "?") + "v=" + BUILD;
-  const res = await fetch(url);
+  // Without a timeout a hung request never resolves into an error state and
+  // the page shows "loading" forever; 15 s is far beyond any healthy response.
+  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`${path}: ${res.status}`);
   return res.json();
 }
@@ -107,12 +109,16 @@ export function fetchIncidents(q: IncidentQuery): Promise<Incident[]> {
   return get(`/api/incidents?${params}`);
 }
 
+// Both headline aggregates request min_severity=2: severity-1 analysis and
+// commentary stay in the feed but are not counted as incidents. The API's own
+// default stays 1 so external consumers see unchanged behaviour.
 export const fetchTimeline = (days: number, country?: string) =>
   get<TimelineBucket[]>(
-    `/api/stats/timeline?days=${days}${country ? `&country=${country}` : ""}`,
+    `/api/stats/timeline?days=${days}&min_severity=2${country ? `&country=${country}` : ""}`,
   );
 
-export const fetchSummary = () => get<SummaryCell[]>("/api/stats/summary");
+export const fetchSummary = () =>
+  get<SummaryCell[]>("/api/stats/summary?min_severity=2");
 export const fetchSources = () => get<SourceStatus[]>("/api/sources");
 
 export interface PostureRule {

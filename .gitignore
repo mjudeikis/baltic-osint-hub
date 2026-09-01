@@ -3,3 +3,6 @@ web/node_modules/
 web/dist/
 *.log
 .env
+.claude/
+# Root tooling deps (impeccable detector parsers)
+/node_modules/

@@ -7,7 +7,10 @@
   --surface-1: #fcfcfb;
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
-  --text-muted: #898781;
+  /* 4.9:1+ on both surfaces — muted must stay AA; it carries day headers,
+     column headers, and the "no data" statements the product commits to
+     keeping visible. (Dark's #898781 already passes on #1a1a19.) */
+  --text-muted: #6f6d67;
   --grid: #e1e0d9;
   --baseline: #c3c2b7;
   --border: rgba(11, 11, 11, 0.1);
@@ -26,8 +29,30 @@
   /* Status palette (fixed, never themed) — always paired with icon + label. */
   --status-good: #0ca30c;
   --status-warning: #fab219;
-  --status-serious: #ec835a;
+  /* Muted terracotta, deliberately off sabotage's vivid orange (#eb6834):
+     the level-4 posture ladder must never wear a category's colour. */
+  --status-serious: #c56a55;
   --status-critical: #d03b3b;
+
+  /* Status TEXT variants: the hues above are for dots, rungs and fills, and
+     amber/coral fail contrast as text on light surfaces. Text set in a status
+     colour uses these — same hue, lightness themed for AA. */
+  --status-good-text: #007701;
+  --status-warning-text: #805906;
+  --status-serious-text: #9e4430;
+  --status-critical-text: #b53232;
+
+  /* Machine-measured map layers: a muted instrument family, deliberately
+     desaturated so a detection never borrows a category's voice (orange must
+     keep meaning sabotage, red undersea infrastructure). Shape still carries
+     layer identity; these say "machine, not event" at a glance. */
+  --layer-jamming: #557d8d;
+  --layer-thermal: #8d5a74;
+  --layer-air: #5d6b8c;
+  --layer-searoutine: #6f7d6a;
+  --layer-sites: #7c7255;
+  --layer-cable: #74797c;
+  --layer-territory: #8d6b5a;
 
   /* Sequential blue ramp steps for severity 1–5 (ordinal use: start at 250). */
   --seq-1: #86b6ef;
@@ -61,6 +86,17 @@
     --seq-3: #256abf;
     --seq-4: #1c5cab;
     --seq-5: #184f95;
+    --status-good-text: #0ca30c;
+    --status-warning-text: #fab219;
+    --status-serious-text: #e08a76;
+    --status-critical-text: #e05252;
+    --layer-jamming: #6b93a3;
+    --layer-thermal: #a3708a;
+    --layer-air: #7383a3;
+    --layer-searoutine: #85937f;
+    --layer-sites: #93886a;
+    --layer-cable: #8a9094;
+    --layer-territory: #a3806e;
   }
 }
 :root[data-theme="dark"] {
@@ -86,6 +122,17 @@
   --seq-3: #256abf;
   --seq-4: #1c5cab;
   --seq-5: #184f95;
+  --status-good-text: #0ca30c;
+  --status-warning-text: #fab219;
+  --status-serious-text: #e08a76;
+  --status-critical-text: #e05252;
+  --layer-jamming: #6b93a3;
+  --layer-thermal: #a3708a;
+  --layer-air: #7383a3;
+  --layer-searoutine: #85937f;
+  --layer-sites: #93886a;
+  --layer-cable: #8a9094;
+  --layer-territory: #a3806e;
 }
 
 * {
@@ -122,6 +169,26 @@ a {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 16px 48px;
+}
+
+/* Keyboard users get straight to the answer instead of tabbing through the
+   status strip and seven nav links first. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--surface-1);
+  color: var(--series-1);
+  border: 1px solid var(--series-1);
+  border-radius: 6px;
+  padding: 8px 14px;
+  z-index: 10;
+  text-decoration: none;
+  font-weight: 600;
+}
+.skip-link:focus-visible {
+  left: 16px;
+  top: 12px;
 }
 
 /* Collection status strip pinned above the page header. */
@@ -191,10 +258,10 @@ a {
   border: 1px solid currentColor;
 }
 .posture-trend[data-trend="de-escalating"] {
-  color: var(--status-good);
+  color: var(--status-good-text);
 }
 .posture-trend[data-trend="escalating"] {
-  color: var(--status-warning);
+  color: var(--status-warning-text);
 }
 .ladder {
   display: flex;
@@ -282,7 +349,10 @@ a {
 }
 @media (max-width: 900px) {
   .layout {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr), not 1fr: a bare 1fr has an auto minimum, so any nowrap
+       child (tile-event headlines) stretches the column past the viewport
+       and the whole page scrolls sideways. */
+    grid-template-columns: minmax(0, 1fr);
   }
   .sidenav {
     position: static;
@@ -334,6 +404,11 @@ a {
 }
 .chevron[data-open="true"] {
   transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
 }
 .section > [hidden] {
   display: none !important;
@@ -503,11 +578,11 @@ div > section:first-child > .feed-day {
   color: var(--text-muted);
 }
 .corrob[data-level="corroborated"] {
-  color: var(--status-good);
+  color: var(--status-good-text);
   border-color: var(--status-good);
 }
 .corrob[data-level="state-media-only"] {
-  color: var(--status-warning);
+  color: var(--status-warning-text);
   border-color: var(--status-warning);
 }
 /* Per-incident permalink: unobtrusive until the row is hovered or the link
@@ -525,6 +600,62 @@ div > section:first-child > .feed-day {
 }
 @media (prefers-reduced-motion: reduce) {
   .permalink {
+    transition: none;
+  }
+}
+/* Touch has no hover: reveal permalinks and give controls a real thumb
+   target without changing the pointer layout. */
+@media (pointer: coarse) {
+  .permalink {
+    opacity: 1;
+  }
+  .filters select,
+  .filters button,
+  .sar-count,
+  .chip-clear {
+    min-height: 44px;
+  }
+  /* The mobile nav pills are primary navigation; they get real thumb
+     targets too. */
+  .sidenav a {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* Keyboard-only path to the timeline's day drill-through: invisible until
+   focused, then a plain labelled select. */
+.sr-day-nav {
+  position: absolute;
+  left: -9999px;
+}
+.sr-day-nav:focus-within {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.sr-day-nav select {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border: 1px solid var(--baseline);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+}
+
+/* Data that is being refetched dims rather than lying still: stale rows must
+   not read as current while a filter change is in flight. */
+.refetching {
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .refetching {
     transition: none;
   }
 }
@@ -639,6 +770,8 @@ div > section:first-child > .feed-day {
   color: var(--series-1);
   cursor: pointer;
   text-decoration: underline;
+  /* Buttons center by default; a multi-line site name must read as a link. */
+  text-align: left;
 }
 .linklike:hover {
   opacity: 0.8;
@@ -667,7 +800,7 @@ div > section:first-child > .feed-day {
 .cred-warn {
   font-size: 11px;
   font-weight: 600;
-  color: var(--status-warning);
+  color: var(--status-warning-text);
   border: 1px solid var(--status-warning);
   border-radius: 99px;
   padding: 0 7px;
@@ -688,8 +821,8 @@ div > section:first-child > .feed-day {
   color: var(--text-secondary);
 }
 
-.site-class[data-class="empty"] { color: var(--status-good); }
-.site-class[data-class="hollow"] { color: var(--status-warning); }
+.site-class[data-class="empty"] { color: var(--status-good-text); }
+.site-class[data-class="hollow"] { color: var(--status-warning-text); }
 .site-class[data-class="occupied"] { color: var(--text-muted); }
 
 /* Satellite table: ~50 rows, so it has to stay dense and scannable. */
@@ -825,8 +958,8 @@ div > section:first-child > .feed-day {
   font-weight: 600;
   white-space: nowrap;
 }
-.sar-legend dt[data-class="empty"] { color: var(--status-good); }
-.sar-legend dt[data-class="hollow"] { color: var(--status-warning); }
+.sar-legend dt[data-class="empty"] { color: var(--status-good-text); }
+.sar-legend dt[data-class="hollow"] { color: var(--status-warning-text); }
 .sar-legend dt[data-class="occupied"] { color: var(--text-muted); }
 .sar-legend dd {
   margin: 0;
@@ -905,6 +1038,9 @@ div > section:first-child > .feed-day {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Flex items default to min-width auto, which sizes to the full nowrap
+     text and defeats the ellipsis. */
+  min-width: 0;
 }
 .tile .tile-events a:hover {
   color: var(--series-1);
@@ -928,7 +1064,8 @@ div > section:first-child > .feed-day {
   white-space: nowrap;
 }
 .banner-issue:hover {
-  color: var(--status-warning);
+  /* Interface hover, not a status: the status hues never decorate. */
+  color: var(--text-primary);
 }
 @media (max-width: 700px) {
   .banner-issue {

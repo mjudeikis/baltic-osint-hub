@@ -21,9 +21,12 @@ import { CATEGORIES, categoryLabel, cssColor } from "../taxonomy";
 // you could only look at, while every comparable dashboard lets you scrub.
 export default function Timeline({
   buckets,
+  days,
   onSelectDay,
 }: {
   buckets: TimelineBucket[];
+  // The requested window length, so quiet days can be drawn as quiet days.
+  days: number;
   onSelectDay?: (day: string) => void;
 }) {
   // Brush indices, or null for "the whole window". Held here rather than
@@ -39,6 +42,23 @@ export default function Timeline({
       const row = byDay.get(day) ?? { day };
       row[key] = ((row[key] as number) ?? 0) + b.count;
       byDay.set(day, row);
+    }
+    // Densify: a categorical axis renders only the days present, so a
+    // six-day calm gap would collapse into two adjacent bars and the chart
+    // would manufacture escalation. Quiet days are the answer to "is this
+    // week unusual?" and must occupy their real width. The window starts at
+    // the first day with data (a fresh database has no meaningful zeros
+    // before collection began) and runs to today with every day present.
+    if (byDay.size > 0) {
+      const first = [...byDay.keys()].sort()[0];
+      const start = new Date(`${first}T00:00:00Z`);
+      const windowStart = new Date();
+      windowStart.setUTCDate(windowStart.getUTCDate() - (days - 1));
+      const from = start > windowStart ? start : windowStart;
+      for (const d = new Date(from); d <= new Date(); d.setUTCDate(d.getUTCDate() + 1)) {
+        const key = d.toISOString().slice(0, 10);
+        if (!byDay.has(key)) byDay.set(key, { day: key });
+      }
     }
     const data = [...byDay.values()].sort((a, b) =>
       String(a.day).localeCompare(String(b.day)),
@@ -124,9 +144,9 @@ export default function Timeline({
           <Brush
             dataKey="day"
             height={22}
-            travellerWidth={8}
+            travellerWidth={10}
             stroke={cssColor("--baseline")}
-            fill={cssColor("--surface-2")}
+            fill={cssColor("--surface-1")}
             tickFormatter={(d: string) => String(d).slice(5)}
             onChange={(r: { startIndex?: number; endIndex?: number }) => {
               if (r?.startIndex === undefined || r?.endIndex === undefined) return;
@@ -151,7 +171,34 @@ export default function Timeline({
           show that day in the feed.
         </p>
       )}
-      <div className="legend" aria-hidden={false}>
+      {/* The bar-click drill-through is pointer-only; this is its keyboard
+          path. Off-screen until focused, then a plain labelled select. */}
+      {onSelectDay && (
+        <div className="sr-day-nav">
+          <label htmlFor="timeline-day-picker">Show a single day in the feed:</label>
+          <select
+            id="timeline-day-picker"
+            value=""
+            onChange={(e) => {
+              if (e.target.value) onSelectDay(e.target.value);
+            }}
+          >
+            <option value="">Choose a day…</option>
+            {data.map((row) => {
+              const dayTotal = series.reduce(
+                (n, s) => n + ((row[s.key] as number) ?? 0),
+                0,
+              );
+              return (
+                <option key={String(row.day)} value={String(row.day)}>
+                  {String(row.day)} — {dayTotal} {dayTotal === 1 ? "event" : "events"}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+      )}
+      <div className="legend">
         {series.map((s) => (
           <span className="key" key={s.key}>
             <span className="swatch" style={{ background: s.color }} />
@@ -159,6 +206,12 @@ export default function Timeline({
           </span>
         ))}
       </div>
+      {/* The counting rule, stated where the numbers are: commentary is not
+          an event, so it never inflates a chart titled "incidents". */}
+      <p className="brush-hint">
+        Counts events of severity 2 and above. Severity-1 analysis and
+        commentary stay in the incident feed but are not counted here.
+      </p>
     </>
   );
 }

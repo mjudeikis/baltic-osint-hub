@@ -80,8 +80,10 @@ export default function MapLegend() {
       </p>
       <p className="map-legend-lead">
         Everything except <strong>Incidents</strong> is a machine measurement —
-        a detection, not a verified event. Each entry says what it is worth,
-        and what it cannot tell you.
+        a detection, not a verified event. Machine layers share a deliberately
+        muted palette; the saturated colours belong to reported incidents and
+        the charts. Each entry says what it is worth, and what it cannot tell
+        you.
       </p>
       <dl>
         {LAYERS.map((l) => {

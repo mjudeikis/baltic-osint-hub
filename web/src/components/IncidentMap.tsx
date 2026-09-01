@@ -8,12 +8,13 @@ import { Incident, Layers } from "../api";
 import { INCIDENTS_DEF, MAP_LAYERS, OverlayKey } from "../layers";
 import { categoryLabel, cssColor, severityColor, SEVERITY_LABELS } from "../taxonomy";
 
-// Encoding: incident markers use the sequential blue ramp for severity;
-// jamming cells are a one-hue orange ramp (opacity = share of affected
-// aircraft); thermal/air/sea overlays carry identity via categorical slots —
-// never rank-assigned. Shape is the layer's identity and is fixed; colour
-// reinforces it but never carries it alone — see ../shapes. Layer identity
-// (key, label, colour, shape) lives in ../layers, shared with the legend.
+// Encoding: incident markers (the human-reported layer) use the sequential
+// blue ramp for severity; machine-measured overlays use the muted --layer-*
+// instrument family (opacity = intensity where applicable), so a detection
+// never wears a category's colour. Shape is the layer's identity and is
+// fixed; colour reinforces it but never carries it alone — see ../shapes.
+// Layer identity (key, label, colour, shape) lives in ../layers, shared with
+// the legend.
 
 // The overlays whose map icon is a shape bitmap, registered on load.
 const ICON_LAYERS = ["thermal", "air", "sea", "searoutine"] as const;
@@ -35,6 +36,10 @@ export default function IncidentMap({
   const map = useRef<maplibregl.Map | null>(null);
   const sitePopup = useRef<maplibregl.Popup | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // WebGL can be unavailable (disabled by policy, old GPUs, some privacy
+  // browsers) and the MapLibre constructor throws — which, uncaught, unmounts
+  // the entire app. The map is one section; its failure must cost the map.
+  const [mapFailed, setMapFailed] = useState(false);
   const [visible, setVisible] = useState<Record<OverlayKey, boolean>>(
     () =>
       Object.fromEntries(
@@ -45,24 +50,35 @@ export default function IncidentMap({
 
   useEffect(() => {
     if (!el.current || map.current) return;
-    const m = new maplibregl.Map({
-      container: el.current,
-      style: {
-        version: 8,
-        sources: {
-          osm: {
-            type: "raster",
-            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-            tileSize: 256,
-            attribution: "© OpenStreetMap contributors",
+    let m: maplibregl.Map;
+    try {
+      m = new maplibregl.Map({
+        container: el.current,
+        style: {
+          version: 8,
+          sources: {
+            osm: {
+              type: "raster",
+              tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+              tileSize: 256,
+              attribution: "© OpenStreetMap contributors",
+            },
           },
+          layers: [{ id: "osm", type: "raster", source: "osm" }],
         },
-        layers: [{ id: "osm", type: "raster", source: "osm" }],
-      },
-      center: [23.5, 56.5],
-      zoom: 4.4,
-      attributionControl: { compact: true },
-    });
+        center: [23.5, 56.5],
+        zoom: 4.4,
+        attributionControl: { compact: true },
+        // A fixed-height canvas mid-page otherwise swallows the scroll
+        // gesture: a phone thumb-drag pans the map instead of the page.
+        // Cooperative gestures require ctrl+scroll / two fingers, like every
+        // embedded map.
+        cooperativeGestures: true,
+      });
+    } catch {
+      setMapFailed(true);
+      return;
+    }
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }));
     m.on("load", () => {
       // Register the shape bitmaps before any symbol layer references them.
@@ -158,9 +174,9 @@ export default function IncidentMap({
               type: "fill",
               source: "territory",
               paint: {
-                "fill-color": cssColor("--series-8"),
+                "fill-color": cssColor("--layer-territory"),
                 "fill-opacity": 0.1,
-                "fill-outline-color": cssColor("--series-8"),
+                "fill-outline-color": cssColor("--layer-territory"),
               },
             },
             first,
@@ -173,7 +189,7 @@ export default function IncidentMap({
             type: "line",
             source: "cables",
             paint: {
-              "line-color": cssColor("--series-3"),
+              "line-color": cssColor("--layer-cable"),
               "line-width": 1.5,
               "line-opacity": 0.75,
               "line-dasharray": [3, 2],
@@ -204,7 +220,7 @@ export default function IncidentMap({
         type: "fill",
         source: "jamming",
         paint: {
-          "fill-color": cssColor("--series-2"),
+          "fill-color": cssColor("--layer-jamming"),
           "fill-opacity": [
             "interpolate",
             ["linear"],
@@ -328,7 +344,7 @@ export default function IncidentMap({
             "case",
             ["get", "anomaly"],
             cssColor("--status-serious"),
-            cssColor("--series-4"),
+            cssColor("--layer-sites"),
           ],
           "line-width": 2,
         },
@@ -337,7 +353,7 @@ export default function IncidentMap({
         `<strong>${esc(p.label)}</strong><br/>${esc(p.country)} · ${esc(p.kind)}<br/>` +
           (p.measured
             ? `bright pixels ${(p.latest * 100).toFixed(1)}% (baseline ${(p.median * 100).toFixed(1)}%)<br/>` +
-              `${p.anomaly ? "▲ change detected" : "○ nominal"}<br/>`
+              `${p.anomaly ? "◆ change detected" : "○ nominal"}<br/>`
             : "no radar measurements yet<br/>") +
           `<a href="${esc(p.browser)}" target="_blank" rel="noopener noreferrer">inspect imagery ↗</a>`,
       );
@@ -403,7 +419,7 @@ export default function IncidentMap({
                 : aoi.scene_shifted
                   ? "◌ conditions changed — comparison suppressed"
                   : aoi.anomaly
-                    ? "▲ change detected"
+                    ? "◆ change detected"
                     : "○ nominal")
             : "<br/><br/>no radar measurements yet") +
           `<br/><a href="${esc(aoi.browser_url)}" target="_blank" rel="noopener noreferrer">inspect imagery ↗</a>`,
@@ -432,6 +448,17 @@ export default function IncidentMap({
   const locatedIncidents = incidents.filter(
     (i) => i.lat != null && i.lon != null,
   ).length;
+
+  if (mapFailed) {
+    return (
+      <p style={{ color: "var(--text-muted)" }}>
+        The interactive map could not be loaded on this device — it needs
+        WebGL, which this browser has disabled or does not support. Nothing is
+        lost: every located incident also appears in the incident feed below,
+        and the satellite table carries the monitored sites.
+      </p>
+    );
+  }
 
   return (
     <>

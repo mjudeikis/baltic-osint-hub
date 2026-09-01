@@ -12,6 +12,12 @@ import {
 // Items are grouped under day headers: at up to 200 rows the date is the main
 // scanning axis, and a header carries it once instead of once per row. Items
 // arrive date-ordered from the API, so grouping is a single pass.
+//
+// Within a day, state-controlled items sort after independent and
+// institutional reporting (chronology preserved inside each band). Display
+// order is a form of prominence, and an adversary-aware product does not let
+// Moscow's framing be the first row a worried reader sees — the items are
+// shown, marked, and never lead.
 function groupByDay(incidents: Incident[]): { day: string; items: Incident[] }[] {
   const groups: { day: string; items: Incident[] }[] = [];
   for (const inc of incidents) {
@@ -19,6 +25,11 @@ function groupByDay(incidents: Incident[]): { day: string; items: Incident[] }[]
     const last = groups[groups.length - 1];
     if (last && last.day === day) last.items.push(inc);
     else groups.push({ day, items: [inc] });
+  }
+  for (const g of groups) {
+    const rest = g.items.filter((i) => i.credibility !== "state-controlled");
+    const state = g.items.filter((i) => i.credibility === "state-controlled");
+    g.items = [...rest, ...state];
   }
   return groups;
 }
@@ -30,6 +41,10 @@ const dayLabel = (day: string): string =>
     month: "short",
     year: "numeric",
   });
+
+// The API serves at most this many rows to the feed; at the cap the list is
+// truncated and must say so rather than posing as complete.
+const FEED_CAP = 200;
 
 export default function Feed({ incidents }: { incidents: Incident[] }) {
   if (incidents.length === 0) {
@@ -51,11 +66,19 @@ export default function Feed({ incidents }: { incidents: Incident[] }) {
               id={`incident-${inc.id}`}
               data-state-media={inc.credibility === "state-controlled" || undefined}
             >
-              {/* Title first: it is the thing a reader scans; the metadata
-                  qualifies it and reads second. */}
+              {/* The English summary leads: titles arrive in the source
+                  language (LT/LV/ET/PL/RU), and the page's largest reading
+                  surface must scan in the language the product ships in. The
+                  original headline rides on the outbound link as provenance —
+                  the board's tile headlines made the same call. */}
               <div className="title">
-                <a href={inc.url} target="_blank" rel="noopener noreferrer">
-                  {inc.title}
+                <a
+                  href={inc.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={inc.summary && inc.title !== inc.summary ? inc.title : undefined}
+                >
+                  {inc.summary || inc.title}
                 </a>
                 <a
                   className="permalink"
@@ -115,11 +138,16 @@ export default function Feed({ incidents }: { incidents: Incident[] }) {
                   </span>
                 )}
               </div>
-              {inc.summary && <p className="summary">{inc.summary}</p>}
             </article>
           ))}
         </section>
       ))}
+      {incidents.length >= FEED_CAP && (
+        <p className="brush-hint">
+          Showing the {FEED_CAP} most recent matching items — the CSV export
+          above carries up to 500.
+        </p>
+      )}
     </div>
   );
 }

@@ -141,6 +141,21 @@ Rules:
 
 - Levels **4 and 5 are set by absolute adverse severity** and cannot be
   softened by good news. A serious incident stands on its own.
+- **High requires persistence** (decided 2026-09-01): a single corroborated
+  severity-4 event holds the reading at **Elevated**, and says so; High needs
+  a **second distinct corroborated serious event in the same week**. Severity
+  5 reaches Severe alone — a critical event needs no company to matter.
+  Rationale: severity-4 incidents — intercepts, jamming spikes, sabotage
+  attempts — recur most weeks in this region. If any one of them could carry
+  High alone, High would become the permanent state and readers would
+  calibrate it away, which is precisely how the US Homeland Security Advisory
+  System died (its 2009 review found the national baseline permanently at
+  "guarded" with the two lowest levels never once used). The accepted trade:
+  a genuinely novel single S4 reads Elevated-with-the-event-named rather than
+  High; truly grave single events classify severity 5. Open question worth
+  revisiting: whether an S4-specific baseline ("this week's serious-event
+  count vs the trailing norm") should eventually replace the fixed
+  two-event threshold once enough history accumulates.
 - A week with more favourable than adverse developments **steps the middle of
   the scale down one**, because sustained defensive progress genuinely is a
   different situation from the same adverse count with nothing going right.

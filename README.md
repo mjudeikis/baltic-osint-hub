@@ -127,7 +127,10 @@ favourable even though its subject is sabotage.
 That feeds a single **regional posture** reading (Calm → Watchful → Elevated →
 High → Severe, ascending; deliberately not DEFCON numbering, which counts
 down). Levels 4 and 5 are set by absolute adverse severity and cannot be
-softened by good news, while a week with more favourable than adverse
+softened by good news — but High requires persistence: a single corroborated
+serious event holds at Elevated, and High needs a second distinct serious
+event in the same week, so one recurring incident type cannot pin the region
+at High (see docs/methodology.md). A week with more favourable than adverse
 developments steps the middle of the scale down one. The banner always shows
 the counts it was derived from, so the reading is auditable rather than a vibe.
 

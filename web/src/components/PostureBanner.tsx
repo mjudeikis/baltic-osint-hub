@@ -1,5 +1,6 @@
 import { Meta, Posture } from "../api";
-import { cssColor, postureColor, TONES } from "../taxonomy";
+import { cssColor, postureColor, postureTextColor, textColor, TONES } from "../taxonomy";
+import { revealSection } from "./Section";
 
 // The single at-a-glance reading. Its job is as much to prevent false alarm as
 // to raise it: the balance bar shows how much of the week was actually
@@ -15,24 +16,25 @@ export default function PostureBanner({
 }) {
   if (!posture) {
     return (
-      <div className="posture" aria-busy="true">
+      <div className="posture" id="posture" aria-busy="true">
         <span style={{ color: "var(--text-muted)" }}>Reading regional posture…</span>
       </div>
     );
   }
 
   const colour = postureColor(posture.level);
+  const textColour = postureTextColor(posture.level);
   const { positive, neutral, negative } = posture.counts;
   const total = positive + neutral + negative;
 
   return (
-    <section className="posture" aria-label="Regional posture">
+    <section className="posture" id="posture" aria-label="Regional posture">
       <div className="posture-head">
         <div>
           <div className="posture-eyebrow">
             Regional posture{scope ? ` — ${scope}` : ""} · last 7 days
           </div>
-          <div className="posture-level" style={{ color: colour }}>
+          <div className="posture-level" style={{ color: textColour }}>
             {posture.level_name}
             <span className="posture-of">{posture.level} of 5</span>
             {/* A scale that can only ratchet up stops being informative — the
@@ -67,8 +69,18 @@ export default function PostureBanner({
       </div>
 
       <p className="posture-headline">{posture.headline}</p>
-      <p className="posture-explain">{posture.explanation}</p>
-      {posture.context && <p className="posture-context">{posture.context}</p>}
+      {/* The honesty budget: one word (the level), one basis (the headline
+          names the rule that set it), one caveat line. Everything else lives
+          one click down in "How this level is decided". The line merges the
+          count breakdown with the typicality answer — as data when history
+          exists, as an honest "can't say yet" when it doesn't. */}
+      <p className="posture-explain">
+        {negative} adverse · {positive} favourable · {neutral} neutral this
+        week —{" "}
+        {posture.typical_week > 0
+          ? `a typical week has ${posture.typical_week} adverse.`
+          : "not enough history yet to say whether that is typical."}
+      </p>
 
       {total > 0 && (
         <>
@@ -92,11 +104,20 @@ export default function PostureBanner({
             {(["positive", "neutral", "negative"] as const).map((k) => {
               const n = { positive, neutral, negative }[k];
               return (
-                <span key={k} className="key" style={{ color: cssColor(TONES[k].cssVar) }}>
+                <span key={k} className="key" style={{ color: textColor(TONES[k].cssVar) }}>
                   {TONES[k].symbol} {n} {TONES[k].label.toLowerCase()}
                 </span>
               );
             })}
+            {/* The reading's other half: what to do with it. Readiness is
+                routine advice here, so the path to it is always present, not
+                only once the level is already high. */}
+            <button
+              className="linklike"
+              onClick={() => revealSection("prepare")}
+            >
+              How to prepare →
+            </button>
           </div>
         </>
       )}

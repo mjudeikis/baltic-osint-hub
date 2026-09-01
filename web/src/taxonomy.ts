@@ -52,6 +52,20 @@ export function cssColor(varName: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
 }
 
+// The status hues fail contrast as text on light surfaces; every place a
+// status colour becomes text resolves it through here, so dots and fills keep
+// the canonical hue while text gets the AA variant of the same hue.
+const STATUS_TEXT: Record<string, string> = {
+  "--status-good": "--status-good-text",
+  "--status-warning": "--status-warning-text",
+  "--status-serious": "--status-serious-text",
+  "--status-critical": "--status-critical-text",
+};
+
+export const textVar = (varName: string): string => STATUS_TEXT[varName] ?? varName;
+
+export const textColor = (varName: string): string => cssColor(textVar(varName));
+
 // Tone — the direction of an item for regional security. Always rendered as
 // colour + symbol + word so it never depends on colour alone.
 export interface ToneDef {
@@ -81,6 +95,10 @@ export const POSTURE_LEVELS: { level: number; cssVar: string }[] = [
 
 export const postureColor = (level: number): string =>
   cssColor(POSTURE_LEVELS.find((p) => p.level === level)?.cssVar ?? "--text-muted");
+
+// For the level rendered as text (the posture word): same hue, AA lightness.
+export const postureTextColor = (level: number): string =>
+  textColor(POSTURE_LEVELS.find((p) => p.level === level)?.cssVar ?? "--text-muted");
 
 // Source credibility. State-controlled outlets are ingested deliberately so
 // the narrative aimed at the region is visible, but they must never be
