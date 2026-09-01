@@ -210,15 +210,13 @@ func aggregate(members []eventMember) Event {
 
 	distinct := map[string]bool{}
 	toneVotes := map[string]int{}
-	countries := []string{}
+	countryVotes := map[string]int{}
 	for _, m := range judging {
 		if m.severity > ev.Severity {
 			ev.Severity = m.severity
 		}
 		for _, c := range m.countries {
-			if !slices.Contains(countries, c) {
-				countries = append(countries, c)
-			}
+			countryVotes[c]++
 		}
 		if m.occurredAt.Before(ev.OccurredAt) {
 			ev.OccurredAt = m.occurredAt
@@ -226,6 +224,31 @@ func aggregate(members []eventMember) Event {
 		toneVotes[m.tone]++
 		if !stateOnly {
 			distinct[m.source] = true
+		}
+	}
+	// A country is published only when a majority of judging members place
+	// the event there. The previous rule was a union, and a union hands the
+	// whole board to the single loosest classification: one outlet tagging an
+	// Estonian airspace incursion EE+LT+LV marked three country tiles with a
+	// severity-4 event that happened in one of them.
+	countries := []string{}
+	for c, n := range countryVotes {
+		if n*2 > len(judging) {
+			countries = append(countries, c)
+		}
+	}
+	// Chained joins (A shares a country with B, B with C) can leave no
+	// country with a majority; fall back to plurality rather than publish an
+	// event that is nowhere.
+	if len(countries) == 0 {
+		top := 0
+		for _, n := range countryVotes {
+			top = max(top, n)
+		}
+		for c, n := range countryVotes {
+			if n == top {
+				countries = append(countries, c)
+			}
 		}
 	}
 	slices.Sort(countries)

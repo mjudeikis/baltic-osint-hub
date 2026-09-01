@@ -86,6 +86,8 @@ Tone — judge every item from the perspective of the security of Lithuania, Lat
 
 Tone and severity are independent. A large NATO reinforcement is severity 3-4 and "positive". A successful arson attack is severity 4 and "negative". Do not mark something "negative" merely because it concerns a threat — an article about catching a saboteur is "positive" even though the subject is sabotage. Most defence-procurement and exercise news is "positive" or "neutral", not "negative".
 
+Countries — list ONLY where the event itself took place or whose territory, institutions, infrastructure or citizens were directly involved. Not countries that are merely nearby, alarmed, implicated by analogy, or part of the same region. Drones entering Estonian airspace is ["EE"] even if neighbours scrambled jets or commented — the dashboard maps each country's own incidents, and tagging neighbours marks a Lithuanian reader's country with an Estonian event. List several countries only when the event genuinely spans them: a cable linking two of them, coordinated arrests in three, an exercise on the borders of all four. Regional analysis naming no specific country gets the countries it is actually about, not all four by default.
+
 Items may be in Lithuanian, Latvian, Estonian, Polish, Russian, or English. Always write the summary in English, one to two factual sentences.
 
 Location: give lat/lon whenever the item names ANY place you can place on a map — a city or town, a district, an airport or port, a military base, a border crossing, a named stretch of sea, or a region. Use the centre of that place; approximate is fine and expected. Also give "place" as the name you geocoded, so a reader can tell what the pin refers to.

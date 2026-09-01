@@ -22,11 +22,40 @@ func TestAggregateTakesEarliestTimeAndMaxSeverity(t *testing.T) {
 	if ev.Severity != 4 {
 		t.Errorf("Severity = %d, want the most consequential assessment 4", ev.Severity)
 	}
-	if len(ev.Countries) != 2 || ev.Countries[0] != "LT" || ev.Countries[1] != "LV" {
-		t.Errorf("Countries = %v, want the union [LT LV]", ev.Countries)
+	if len(ev.Countries) != 1 || ev.Countries[0] != "LT" {
+		t.Errorf("Countries = %v, want the majority [LT] — LV is tagged by only one of two members", ev.Countries)
 	}
 	if ev.TotalReports != 2 || ev.SourceCount != 2 {
 		t.Errorf("reports=%d sources=%d, want 2 and 2", ev.TotalReports, ev.SourceCount)
+	}
+}
+
+// One outlet tagging every neighbour must not spread an event across the
+// board: countries need a majority of members, not a single mention. This is
+// the incident-216 regression — an Estonian airspace incursion tagged
+// EE+LT+LV by one classification marked three country tiles Serious.
+func TestAggregateCountriesNeedMajority(t *testing.T) {
+	ev := aggregate([]eventMember{
+		{source: "err-news", tone: "negative", severity: 4, countries: []string{"EE", "LT", "LV"}, occurredAt: at(10)},
+		{source: "postimees", tone: "negative", severity: 4, countries: []string{"EE"}, occurredAt: at(11)},
+		{source: "delfi-lv", tone: "negative", severity: 4, countries: []string{"EE"}, occurredAt: at(12)},
+	})
+	if len(ev.Countries) != 1 || ev.Countries[0] != "EE" {
+		t.Errorf("Countries = %v, want [EE] — LT and LV carry one vote of three", ev.Countries)
+	}
+}
+
+// Chained joins can leave no majority country; the event must still be
+// published somewhere, so the fallback is plurality.
+func TestAggregateCountriesPluralityFallback(t *testing.T) {
+	ev := aggregate([]eventMember{
+		{source: "a", tone: "negative", severity: 2, countries: []string{"LT"}, occurredAt: at(10)},
+		{source: "b", tone: "negative", severity: 2, countries: []string{"LT", "LV"}, occurredAt: at(11)},
+		{source: "c", tone: "negative", severity: 2, countries: []string{"LV", "EE"}, occurredAt: at(12)},
+		{source: "d", tone: "negative", severity: 2, countries: []string{"EE", "PL"}, occurredAt: at(13)},
+	})
+	if len(ev.Countries) != 3 || ev.Countries[0] != "EE" || ev.Countries[1] != "LT" || ev.Countries[2] != "LV" {
+		t.Errorf("Countries = %v, want the plurality [EE LT LV]", ev.Countries)
 	}
 }
 
