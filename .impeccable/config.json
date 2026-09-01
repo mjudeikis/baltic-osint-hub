@@ -1,0 +1,41 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-radius",
+        "value": "2px",
+        "createdAt": "2026-08-31T18:34:42.722Z",
+        "reason": "incumbent balance-seg/rung micro-radius, part of documented mark scale"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "30px",
+        "createdAt": "2026-08-31T18:34:42.751Z",
+        "reason": "incumbent tile count size, documented in DESIGN.md Display prose (28-30px)"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "16px",
+        "createdAt": "2026-08-31T18:34:42.780Z",
+        "reason": "incumbent MapLibre popup close-button size, third-party retheme"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "10px",
+        "createdAt": "2026-08-31T18:34:42.809Z",
+        "reason": "incumbent tile-event severity micro-badge, pre-existing scale step"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "web/src/theme.css"
+        ],
+        "createdAt": "2026-08-31T19:13:50.982Z",
+        "reason": "both side-tab matches in theme.css adjudicated intentional: category-chip spine (same-hue border, dual-agent critique FP) and state-media credibility marker (DESIGN.md non-negotiable product commitment)"
+      }
+    ]
+  }
+}

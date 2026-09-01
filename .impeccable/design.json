@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-31T00:00:00Z",
+  "title": "Design System: Baltic OSINT Hub",
+  "extensions": {
+    "colorMeta": {
+      "page": { "role": "neutral", "displayName": "Warm Paper", "canonical": "#f9f9f7", "tonalRamp": ["#0b0b0a", "#252524", "#424240", "#616160", "#828281", "#a5a5a3", "#c9c9c7", "#eeeeec"] },
+      "surface-1": { "role": "neutral", "displayName": "Card Stock", "canonical": "#fcfcfb", "tonalRamp": ["#0b0b0b", "#252524", "#424241", "#616160", "#828281", "#a5a5a4", "#c9c9c8", "#eeeeed"] },
+      "text-primary": { "role": "neutral", "displayName": "Ink", "canonical": "#0b0b0b", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "text-secondary": { "role": "neutral", "displayName": "Graphite", "canonical": "#52514e", "tonalRamp": ["#0c0b09", "#262522", "#43423f", "#62615e", "#83827f", "#a6a5a1", "#cac9c5", "#f0eeeb"] },
+      "text-muted": { "role": "neutral", "displayName": "Faded Ink (AA)", "canonical": "#6f6d67", "tonalRamp": ["#0d0b07", "#272520", "#44423d", "#6f6d67", "#84827c", "#a7a59f", "#cbc9c3", "#f1eee8"] },
+      "grid": { "role": "neutral", "displayName": "Pencil Grid", "canonical": "#e1e0d9", "tonalRamp": ["#0c0b07", "#262520", "#43423c", "#62615b", "#83827c", "#a6a59f", "#cac9c2", "#f0efe8"] },
+      "baseline": { "role": "neutral", "displayName": "Putty", "canonical": "#c3c2b7", "tonalRamp": ["#0c0b05", "#26251d", "#434239", "#636258", "#848379", "#a7a69b", "#cbcabf", "#f0efe4"] },
+      "series-1": { "role": "primary", "displayName": "Signal Blue (cyber, interaction)", "canonical": "#2a78d6", "tonalRamp": ["#000a20", "#01244e", "#004083", "#055fba", "#3582e1", "#63a7ff", "#a6ccff", "#e5f0fe"] },
+      "series-2": { "role": "categorical", "displayName": "Flare Orange (sabotage)", "canonical": "#eb6834", "tonalRamp": ["#1a0400", "#431301", "#722602", "#a43903", "#d5531b", "#fd7845", "#fdb69c", "#fdeae3"] },
+      "series-3": { "role": "categorical", "displayName": "Sea Green (GPS jamming)", "canonical": "#1baf7a", "tonalRamp": ["#000f07", "#012d1c", "#044f35", "#0b734f", "#019a69", "#37c08a", "#65e5ad", "#c3ffe0"] },
+      "series-4": { "role": "categorical", "displayName": "Beacon Amber (airspace & border)", "canonical": "#eda100", "tonalRamp": ["#120901", "#342102", "#5a3b04", "#825707", "#ad760b", "#da9510", "#febb53", "#feecd4"] },
+      "series-5": { "role": "categorical", "displayName": "Rose (disinformation)", "canonical": "#e87ba4", "tonalRamp": ["#1d000b", "#490225", "#771042", "#9c3762", "#c35a83", "#ea7da6", "#fdafc9", "#fee8ee"] },
+      "series-6": { "role": "categorical", "displayName": "Field Green (military)", "canonical": "#008300", "tonalRamp": ["#001000", "#012f01", "#015101", "#007700", "#2e9c29", "#57c051", "#7de675", "#cbffc6"] },
+      "series-7": { "role": "categorical", "displayName": "Deep Violet (espionage)", "canonical": "#4a3aa7", "tonalRamp": ["#0b002d", "#24016b", "#3d2895", "#594cbb", "#7870e1", "#9a97fd", "#c2c3fe", "#ecedfe"] },
+      "series-8": { "role": "categorical", "displayName": "Coral Red (undersea infrastructure)", "canonical": "#e34948", "tonalRamp": ["#1e0001", "#4d0006", "#7f0312", "#b51221", "#dd4443", "#fe736d", "#fdb3ad", "#fee9e7"] },
+      "series-other": { "role": "categorical", "displayName": "Faded Ink (folded categories)", "canonical": "#898781", "tonalRamp": ["#0d0b07", "#272520", "#44423d", "#63615b", "#84827c", "#a7a59f", "#cbc9c3", "#f1eee8"] },
+      "status-good": { "role": "status", "displayName": "All-Clear Green", "canonical": "#0ca30c", "tonalRamp": ["#001000", "#012f01", "#025102", "#007701", "#099e0a", "#42c43d", "#6bea64", "#ccffc7"] },
+      "status-warning": { "role": "status", "displayName": "Watch Amber", "canonical": "#fab219", "tonalRamp": ["#120900", "#332102", "#583c04", "#805906", "#aa7808", "#d7980a", "#febc41", "#feecd1"] },
+      "status-serious": { "role": "status", "displayName": "Serious Terracotta", "canonical": "#c56a55", "tonalRamp": ["#1a0400", "#431300", "#712703", "#9e4430", "#c56a55", "#e08a76", "#feb59a", "#feeae2"] },
+      "status-critical": { "role": "status", "displayName": "Critical Red", "canonical": "#d03b3b", "tonalRamp": ["#1f0001", "#4d0106", "#7f0511", "#b31923", "#dc4645", "#fe746c", "#ffb3ab", "#fde9e7"] },
+      "status-good-text": { "role": "status-text", "displayName": "All-Clear Green (AA text)", "canonical": "#007701", "tonalRamp": ["#001000", "#012f01", "#015102", "#007701", "#389a33", "#5ebf58", "#83e47c", "#cbffc6"] },
+      "status-warning-text": { "role": "status-text", "displayName": "Watch Amber (AA text)", "canonical": "#805906", "tonalRamp": ["#120900", "#332102", "#583c04", "#805906", "#a37a34", "#c79d58", "#edc17c", "#feecd1"] },
+      "status-serious-text": { "role": "status-text", "displayName": "Serious Terracotta (AA text)", "canonical": "#9e4430", "tonalRamp": ["#1a0400", "#441300", "#712703", "#9e4430", "#c56a55", "#e08a76", "#feb59a", "#fee9e2"] },
+      "status-critical-text": { "role": "status-text", "displayName": "Critical Red (AA text)", "canonical": "#b53232", "tonalRamp": ["#1e0001", "#4c0207", "#800210", "#ac292b", "#d4504c", "#fd756d", "#feb3ac", "#fee9e6"] },
+      "layer-jamming": { "role": "instrument", "displayName": "Instrument Steel (GPS jamming)", "canonical": "#557d8d", "tonalRamp": ["#010d14", "#032a36", "#204856", "#406877", "#618999", "#83acbd", "#a6d1e2", "#daf3fe"] },
+      "layer-thermal": { "role": "instrument", "displayName": "Instrument Plum (thermal)", "canonical": "#8d5a74", "tonalRamp": ["#1c0010", "#3e122b", "#5f3049", "#814f69", "#a5708a", "#c992ad", "#efb6d2", "#fee7f2"] },
+      "layer-air": { "role": "instrument", "displayName": "Instrument Indigo (air activity)", "canonical": "#5d6b8c", "tonalRamp": ["#030822", "#192440", "#354160", "#536181", "#7382a4", "#95a5c8", "#b9c9ee", "#e7efff"] },
+      "layer-searoutine": { "role": "instrument", "displayName": "Instrument Sage (sea baseline)", "canonical": "#6f7d6a", "tonalRamp": ["#050e03", "#1d2919", "#3a4635", "#586654", "#798774", "#9baa96", "#bfcfba", "#e4f4df"] },
+      "layer-sites": { "role": "instrument", "displayName": "Instrument Khaki (radar sites)", "canonical": "#7c7255", "tonalRamp": ["#100b01", "#2d2408", "#4b4126", "#6a6144", "#8c8264", "#afa586", "#d4c9a9", "#f9eece"] },
+      "layer-cable": { "role": "instrument", "displayName": "Instrument Slate (cables)", "canonical": "#74797c", "tonalRamp": ["#080c0e", "#222628", "#3e4345", "#5d6265", "#7e8386", "#a1a6a9", "#c5cacd", "#eaeff3"] },
+      "layer-territory": { "role": "instrument", "displayName": "Instrument Umber (RU/BY territory)", "canonical": "#8d6b5a", "tonalRamp": ["#190500", "#391d0e", "#583a2a", "#7a5948", "#9c7a68", "#c19c8a", "#e6c0ad", "#ffeadf"] },
+      "seq-3": { "role": "sequential", "displayName": "Severity Blues (mid step; ramp seq-1..seq-5)", "canonical": "#2a78d6", "tonalRamp": ["#000a20", "#01244e", "#004083", "#055fba", "#3582e1", "#63a7ff", "#a6ccff", "#e5f0fe"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Posture level word and country-tile counts — the two readings a visitor came for. Tile counts run to 30px." },
+      "headline": { "displayName": "Headline", "purpose": "Site title only." },
+      "title": { "displayName": "Title", "purpose": "Card and section headings." },
+      "body": { "displayName": "Body", "purpose": "Summaries, explanations, preparedness copy." },
+      "body-small": { "displayName": "Body Small", "purpose": "The working density: feed metadata, legends, tables, filters, banners." },
+      "label": { "displayName": "Label", "purpose": "UPPERCASE eyebrows, day headers, table column headers. Letter-spacing 0.04–0.06em." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "state-micro", "value": "120ms ease", "purpose": "Hover-reveal opacity (permalinks). Disabled under prefers-reduced-motion." },
+      { "name": "state-transform", "value": "0.15s ease", "purpose": "Chevron rotation on section collapse. The 150ms ceiling for all micro-state motion." }
+    ],
+    "breakpoints": [
+      { "name": "nav-collapse", "value": "900px" },
+      { "name": "banner-stack", "value": "700px" },
+      { "name": "legend-stack", "value": "620px" }
+    ],
+    "darkTheme": {
+      "note": "Light is the base; dark redefines the same roles under prefers-color-scheme and [data-theme='dark']. Status colors are never themed.",
+      "page": "#0d0d0d",
+      "surface-1": "#1a1a19",
+      "text-primary": "#ffffff",
+      "text-secondary": "#c3c2b7",
+      "text-muted": "#898781",
+      "grid": "#2c2c2a",
+      "baseline": "#383835",
+      "border": "rgba(255, 255, 255, 0.1)",
+      "series-1": "#3987e5",
+      "series-2": "#d95926",
+      "series-3": "#199e70",
+      "series-4": "#c98500",
+      "series-5": "#d55181",
+      "series-6": "#008300",
+      "series-7": "#9085e9",
+      "series-8": "#e66767",
+      "seq-1": "#6da7ec",
+      "seq-2": "#3987e5",
+      "seq-3": "#256abf",
+      "seq-4": "#1c5cab",
+      "seq-5": "#184f95",
+      "status-good-text": "#0ca30c",
+      "status-warning-text": "#fab219",
+      "status-serious-text": "#e08a76",
+      "status-critical-text": "#e05252",
+      "layer-jamming": "#6b93a3",
+      "layer-thermal": "#a3708a",
+      "layer-air": "#7383a3",
+      "layer-searoutine": "#85937f",
+      "layer-sites": "#93886a",
+      "layer-cable": "#8a9094",
+      "layer-territory": "#a3806e"
+    }
+  },
+  "components": [
+    {
+      "name": "Filter Button",
+      "kind": "button",
+      "refersTo": "filter-button",
+      "description": "Quiet bordered control; active state flips border and text to Signal Blue with no fill change.",
+      "html": "<span><button class=\"ds-filter-btn\">All countries</button> <button class=\"ds-filter-btn\" aria-pressed=\"true\">Lithuania</button></span>",
+      "css": ".ds-filter-btn { background: var(--surface-1, #fcfcfb); color: var(--text-primary, #0b0b0b); border: 1px solid var(--baseline, #c3c2b7); border-radius: 6px; padding: 6px 10px; font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; cursor: pointer; } .ds-filter-btn:hover { color: var(--series-1, #2a78d6); } .ds-filter-btn:focus-visible { outline: 2px solid var(--series-1, #2a78d6); outline-offset: 1px; } .ds-filter-btn[aria-pressed=\"true\"] { border-color: var(--series-1, #2a78d6); color: var(--series-1, #2a78d6); font-weight: 600; }"
+    },
+    {
+      "name": "Category Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Pill chip with a 5px left spine in the category's fixed series color — a colored edge, never a colored fill.",
+      "html": "<span><span class=\"ds-chip ds-chip-cat\" style=\"border-left-color: var(--series-2, #eb6834)\">Sabotage</span> <span class=\"ds-chip ds-chip-cat\" style=\"border-left-color: var(--series-1, #2a78d6)\">Cyber</span> <span class=\"ds-chip\">Lithuania</span></span>",
+      "css": ".ds-chip { display: inline-block; font: 400 11.5px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; border: 1px solid var(--baseline, #c3c2b7); color: var(--text-secondary, #52514e); border-radius: 99px; padding: 1px 8px; white-space: nowrap; margin-right: 4px; } .ds-chip-cat { border-left-width: 5px; }"
+    },
+    {
+      "name": "Severity Badge",
+      "kind": "chip",
+      "refersTo": "severity-badge",
+      "description": "Severity 1–5 on the sequential blue ramp; dark text below step 3 for contrast.",
+      "html": "<span><span class=\"ds-sev\" style=\"background: var(--seq-1, #86b6ef); color: #0b0b0b\">1 Analysis</span> <span class=\"ds-sev\" style=\"background: var(--seq-3, #2a78d6)\">3 Notable</span> <span class=\"ds-sev\" style=\"background: var(--seq-5, #104281)\">5 Critical</span></span>",
+      "css": ".ds-sev { display: inline-block; font: 600 11.5px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; border-radius: 4px; padding: 1px 6px; color: #fff; margin-right: 4px; }"
+    },
+    {
+      "name": "Corroboration Pill",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Quiet by default; state colors it — corroborated goes green, state-media-only goes amber. Border and text only, never a fill.",
+      "html": "<span><span class=\"ds-corrob\">single source</span> <span class=\"ds-corrob\" data-level=\"corroborated\">3 independent sources</span> <span class=\"ds-corrob\" data-level=\"state-media-only\">state media only</span></span>",
+      "css": ".ds-corrob { display: inline-block; font: 400 11px/1.6 system-ui, -apple-system, 'Segoe UI', sans-serif; border-radius: 99px; padding: 0 7px; white-space: nowrap; border: 1px solid var(--baseline, #c3c2b7); color: var(--text-muted, #898781); margin-right: 4px; } .ds-corrob[data-level=\"corroborated\"] { color: var(--status-good, #0ca30c); border-color: var(--status-good, #0ca30c); } .ds-corrob[data-level=\"state-media-only\"] { color: var(--status-warning, #fab219); border-color: var(--status-warning, #fab219); }"
+    },
+    {
+      "name": "Feed Item",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Title-first event row; state-media items are marked twice — amber pill and a 3px amber row edge.",
+      "html": "<div><div class=\"ds-feed-item\"><div class=\"ds-feed-title\"><a href=\"#\">Railway signal cabinet arson near Vilnius junction</a></div><div class=\"ds-feed-head\"><span class=\"ds-feed-src\">LRT · 14:20</span><span class=\"ds-chip ds-chip-cat\" style=\"border-left-color: var(--series-2, #eb6834)\">Sabotage</span><span class=\"ds-sev\" style=\"background: var(--seq-4, #1c5cab)\">4 Serious</span></div><p class=\"ds-feed-summary\">Police confirmed deliberate ignition; no service disruption reported.</p></div><div class=\"ds-feed-item\" data-state-media><div class=\"ds-feed-title\"><a href=\"#\">Claims of NATO provocation on the border</a></div><div class=\"ds-feed-head\"><span class=\"ds-feed-src\">Rybar · 09:12</span><span class=\"ds-cred-warn\">state media</span></div><p class=\"ds-feed-summary\">Adversary messaging, not verified reporting.</p></div></div>",
+      "css": ".ds-feed-item { border-top: 1px solid var(--grid, #e1e0d9); padding: 10px 0; font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; } .ds-feed-item:first-child { border-top: none; } .ds-feed-item[data-state-media] { border-left: 3px solid var(--status-warning, #fab219); padding-left: 10px; } .ds-feed-title a { color: var(--text-primary, #0b0b0b); text-decoration: none; } .ds-feed-title a:hover { text-decoration: underline; color: var(--series-1, #2a78d6); } .ds-feed-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; } .ds-feed-src { color: var(--text-muted, #898781); font-size: 12px; } .ds-feed-summary { margin: 4px 0 0; color: var(--text-secondary, #52514e); font-size: 12.5px; } .ds-cred-warn { font-size: 11px; font-weight: 600; color: var(--status-warning, #fab219); border: 1px solid var(--status-warning, #fab219); border-radius: 99px; padding: 0 7px; white-space: nowrap; }"
+    },
+    {
+      "name": "Country Tile",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Threat-board tile: country, 30px count, per-category drill-through rows.",
+      "html": "<div class=\"ds-tile\"><div class=\"ds-tile-country\">Lithuania <span class=\"ds-tile-week\">this week</span></div><div class=\"ds-tile-count\">7</div><div class=\"ds-tile-delta\">adverse events</div><ul class=\"ds-tile-list\"><li><button class=\"ds-tile-drill\"><span>Sabotage</span><span>3</span></button></li><li><button class=\"ds-tile-drill\"><span>Cyber</span><span>2</span></button></li><li><button class=\"ds-tile-drill\"><span>GPS jamming</span><span>2</span></button></li></ul></div>",
+      "css": ".ds-tile { background: var(--surface-1, #fcfcfb); border: 1px solid var(--border, rgba(11,11,11,0.1)); border-radius: 8px; padding: 14px; max-width: 240px; font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--text-primary, #0b0b0b); } .ds-tile-country { font-weight: 600; display: flex; justify-content: space-between; align-items: baseline; } .ds-tile-week { font-weight: 400; font-size: 12px; color: var(--text-muted, #898781); } .ds-tile-count { font-size: 30px; font-weight: 650; margin-top: 4px; } .ds-tile-delta { color: var(--text-secondary, #52514e); font-size: 12.5px; } .ds-tile-list { list-style: none; margin: 10px 0 0; padding: 0; color: var(--text-secondary, #52514e); font-size: 12.5px; } .ds-tile-drill { display: flex; justify-content: space-between; width: 100%; gap: 10px; background: none; border: none; padding: 1px 0; font: inherit; color: inherit; cursor: pointer; text-align: left; border-radius: 3px; } .ds-tile-drill:hover { color: var(--series-1, #2a78d6); background: color-mix(in srgb, var(--series-1, #2a78d6) 10%, transparent); } .ds-tile-drill:focus-visible { outline: 2px solid var(--series-1, #2a78d6); outline-offset: 1px; }"
+    },
+    {
+      "name": "Posture Ladder",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "The five-second read: ascending status-colored rungs beside the level word at Display size.",
+      "html": "<div class=\"ds-posture\"><div class=\"ds-posture-eyebrow\">Regional posture</div><div class=\"ds-posture-row\"><span class=\"ds-posture-level\">Watchful <span class=\"ds-posture-of\">2 of 5</span></span><span class=\"ds-ladder\"><span class=\"ds-rung\" style=\"background: var(--status-good, #0ca30c)\"></span><span class=\"ds-rung\" style=\"background: var(--status-good, #0ca30c)\"></span><span class=\"ds-rung\" style=\"background: var(--grid, #e1e0d9)\"></span><span class=\"ds-rung\" style=\"background: var(--grid, #e1e0d9)\"></span><span class=\"ds-rung\" style=\"background: var(--grid, #e1e0d9)\"></span></span></div></div>",
+      "css": ".ds-posture { background: var(--surface-1, #fcfcfb); border: 1px solid var(--border, rgba(11,11,11,0.1)); border-radius: 8px; padding: 16px 18px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; } .ds-posture-eyebrow { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted, #898781); } .ds-posture-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-top: 4px; } .ds-posture-level { font-size: 28px; font-weight: 650; line-height: 1.15; color: var(--text-primary, #0b0b0b); display: flex; align-items: baseline; gap: 10px; } .ds-posture-of { font-size: 12.5px; font-weight: 500; color: var(--text-muted, #898781); } .ds-ladder { display: flex; gap: 4px; align-items: flex-end; } .ds-rung { display: block; width: 26px; height: 14px; border-radius: 3px; } .ds-rung:nth-child(2) { height: 18px; } .ds-rung:nth-child(3) { height: 22px; } .ds-rung:nth-child(4) { height: 26px; } .ds-rung:nth-child(5) { height: 30px; }"
+    },
+    {
+      "name": "Side Navigation",
+      "kind": "nav",
+      "refersTo": "card",
+      "description": "Sticky rail on a 2px left rule; the current section takes Signal Blue text and rule.",
+      "html": "<ul class=\"ds-sidenav\"><li><a href=\"#\" aria-current=\"true\">Posture</a></li><li><a href=\"#\">Threat board</a></li><li><a href=\"#\">Situation map</a></li><li><a href=\"#\">Feed</a></li></ul>",
+      "css": ".ds-sidenav { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--grid, #e1e0d9); width: 172px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; } .ds-sidenav a { display: block; padding: 6px 10px; margin-left: -2px; border-left: 2px solid transparent; color: var(--text-secondary, #52514e); text-decoration: none; font-size: 12.5px; line-height: 1.3; } .ds-sidenav a:hover { color: var(--text-primary, #0b0b0b); background: var(--surface-1, #fcfcfb); } .ds-sidenav a:focus-visible { outline: 2px solid var(--series-1, #2a78d6); outline-offset: -1px; } .ds-sidenav a[aria-current=\"true\"] { color: var(--series-1, #2a78d6); border-left-color: var(--series-1, #2a78d6); font-weight: 600; }"
+    },
+    {
+      "name": "Clear-Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip-clear",
+      "description": "The one filled chip: 10% Signal Blue tint that deepens on hover; removes an active filter.",
+      "html": "<button class=\"ds-chip-clear\">Sabotage ✕</button>",
+      "css": ".ds-chip-clear { background: color-mix(in srgb, var(--series-1, #2a78d6) 10%, transparent); border: 1px solid var(--series-1, #2a78d6); color: var(--series-1, #2a78d6); border-radius: 99px; padding: 2px 10px; font: 600 12px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; cursor: pointer; white-space: nowrap; } .ds-chip-clear:hover { background: color-mix(in srgb, var(--series-1, #2a78d6) 20%, transparent); } .ds-chip-clear:focus-visible { outline: 2px solid var(--series-1, #2a78d6); outline-offset: 1px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Control Room Wall",
+    "overview": "A public-facing operations display: calm, factual, steady. The surfaces are quiet warm-neutral paper; every color on screen is a signal with a fixed, learnable meaning; nothing is decorative. The design never looks urgent — even when reporting serious events, the wall stays level-voiced and lets severity scales, tone symbols, and posture words carry the message. Sober authority without militarism: this is civil situational awareness, not a war room LARP.\n\nThe system is dataviz-first. Category hues, severity blues, and status colors are a fixed vocabulary shared by every chart, map mark, badge, and legend, so a reader who learns \"orange is sabotage\" once is never lied to. Interface chrome is flat, bordered, and desaturated so the data layer owns all chromatic attention. Components are quiet until it matters: controls recede into transparent-bordered pills and plain text, and color or weight appears only as state — an active filter, a focused row, a state-media warning.",
+    "keyCharacteristics": [
+      "Flat, bordered surfaces on warm-neutral paper; zero shadows.",
+      "Color is a fixed semantic vocabulary, never decoration and never cycled.",
+      "Every meaning is triple-encoded: color + symbol/shape + word.",
+      "Dense but humane: 12.5px working text, tabular numerals, generous grouping.",
+      "Fully dual-theme; light is the base, dark redefines the same roles."
+    ],
+    "rules": [
+      { "name": "The Fixed Slot Rule", "body": "Every category owns its series slot permanently (orange is sabotage). Colors are never assigned by rank, frequency, or cycle order — in charts, maps, chips, and legends alike.", "section": "colors" },
+      { "name": "The Never-Alone Rule", "body": "Color never carries meaning by itself. Tone is color + symbol + word (▲ Favourable / ● Neutral / ▼ Adverse); posture is color + level + word; map layers are color + shape. A colorblind reader or a grayscale printout loses nothing.", "section": "colors" },
+      { "name": "The Unthemed Status Rule", "body": "The four status hues are identical in light and dark themes — a warning must mean exactly the same thing at midnight. The one sanctioned exception is lightness: the status-*-text variants adapt per theme so the words stay readable, but the hue never changes.", "section": "colors" },
+      { "name": "The Instrument Rule", "body": "Machine-measured layers use the muted layer-* family; the saturated categorical hues belong to reported incidents, charts, and chips only. A reader who learned \"orange is sabotage\" must never be lied to by a jamming cell.", "section": "colors" },
+      { "name": "The Tabular Number Rule", "body": "Any column of numbers sets font-variant-numeric: tabular-nums and right-aligns.", "section": "typography" },
+      { "name": "The Level Voice Rule", "body": "Alarm is never typographic. No bold-red headlines, no exclamation styling; severity and posture words in their normal ladder sizes are the maximum volume.", "section": "typography" },
+      { "name": "The Flat Field Rule", "body": "No box-shadow, no gradients, no glows. If a new element seems to need a shadow to separate, give it a border and the surface color instead.", "section": "elevation" },
+      { "name": "The One Channel Rule", "body": "One visual channel per variable. Shape says which layer, fill says how much it matters, color says which kind. Never encode two variables in one channel or one variable in two.", "section": "shapes" },
+      { "name": "The Tone Arrow Rule", "body": "▲ and ▼ mark tone direction (favourable/adverse) and nothing else. Status alarms use the diamond family — ◆ for alarm states, ◇ for caution states — so a grayscale or colorblind reader never sees one glyph meaning both good and bad on the same page.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do take colors only from the token vocabulary in theme.css; resolve them via var(--token) (or cssColor() for canvas/Recharts/MapLibre), and resolve any status color used as text through textColor()/textVar().",
+      "Do pair every color-coded meaning with a symbol or word (the Never-Alone Rule) and keep status colors identical across themes.",
+      "Do style both themes for any new element: light base, dark via @media (prefers-color-scheme: dark) and [data-theme=\"dark\"].",
+      "Do keep state on semantic attributes (aria-pressed, aria-current, data-level, data-trend) and style those selectors — never class-toggled visual state.",
+      "Do respect prefers-reduced-motion for any transition; the existing ceiling is 150ms ease on micro-state changes.",
+      "Do render absence honestly: no data is \"no data\" in Faded Ink, never a zero, never hidden (a durable product commitment)."
+    ],
+    "donts": [
+      "Don't add shadows, gradients, glows, or webfonts — the Flat Field Rule and the system stack are invariants.",
+      "Don't cycle, reassign, or rank-order category colors, and don't use series hues for interface decoration.",
+      "Don't raise the visual alarm volume: no red headlines, no pulsing, no urgency styling beyond the status scale in its defined slots.",
+      "Don't let state-media content render unmarked — the amber pill and row edge are non-negotiable wherever such items appear.",
+      "Don't introduce new radii, font sizes, or spacing steps outside the established ladders without recording them here."
+    ]
+  }
+}
