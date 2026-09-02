@@ -37,8 +37,11 @@ func All() []Fetcher {
 		NewRSS("jamestown", "https://jamestown.org/feed/", "en", slow),
 		NewRSS("icds", "https://icds.ee/en/feed/", "en", slow),
 		NewRSS("warsaw-institute", "https://warsawinstitute.org/feed/", "en", slow),
-		NewRSS("lt-mod", "https://kam.lt/en/feed/", "en", slow),
-		NewRSS("ee-mil", "https://mil.ee/en/feed/", "en", slow),
+		// Both ministries quietly abandoned their English feeds (kam.lt/en
+		// stopped 2026-08-14, mil.ee/en 2026-07-31) while the native-language
+		// ones stayed live; the enricher translates anyway.
+		NewRSS("lt-mod", "https://www.kam.lt/feed/", "lt", slow),
+		NewRSS("ee-mil", "https://mil.ee/feed/", "et", slow),
 		NewRSS("lv-mod", "https://www.mod.gov.lv/lv/rss.xml", "lv", slow),
 
 		// Telegram — public channels commonly monitored for Russia/Belarus
@@ -104,7 +107,9 @@ func extraSources() []Fetcher {
 		NewRSS("lsm-lv", "https://www.lsm.lv/rss/", "lv", fast),
 		NewRSS("diena-lv", "https://www.diena.lv/rss", "lv", slow),
 		NewRSS("15min-lt", "https://www.15min.lt/rss", "lt", fast),
-		NewRSS("delfi-lt", "https://www.delfi.lt/rss/feeds/lithuania.xml", "lt", fast),
+		// Delfi retired the old /rss/feeds/*.xml endpoints (frozen at
+		// 2026-08-12, still served with a 200); v2 channel feeds replaced them.
+		NewRSS("delfi-lt", "https://feed.delfi.lt/v2/channel/global-lt?format=rss", "lt", fast),
 		NewRSS("defence24-pl", "https://defence24.pl/rss", "pl", fast),
 		NewRSS("tvn24", "https://tvn24.pl/najnowsze.xml", "pl", fast),
 		NewRSS("rzeczpospolita", "https://www.rp.pl/rss/1019", "pl", slow),
