@@ -931,6 +931,79 @@ div > section:first-child > .feed-day {
 .sar-table .level {
   white-space: nowrap;
 }
+
+/* Before/after renderings under a flagged row. Pixelated scaling keeps the
+   20 m radar cells honest instead of smearing them into false detail. */
+.sar-imagery {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 6px 0 4px;
+}
+.sar-imagery figure {
+  margin: 0;
+}
+.sar-imagery img {
+  display: block;
+  width: 280px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  image-rendering: pixelated;
+  background: var(--surface-1);
+}
+.sar-imagery figcaption {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.sar-imagery-row td {
+  padding-top: 2px;
+}
+.sar-zoom {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+.sar-lightbox {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  padding: 10px;
+  cursor: zoom-out;
+}
+.sar-lightbox::backdrop {
+  background: rgba(0, 0, 0, 0.72);
+}
+.sar-lightbox figure {
+  margin: 0;
+  cursor: default;
+}
+.sar-lightbox img {
+  display: block;
+  max-width: min(92vw, 1800px);
+  max-height: 84vh;
+  image-rendering: pixelated;
+}
+.sar-lightbox figcaption {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.sar-imagery-details summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.sar-imagery-details summary:hover {
+  color: var(--series-1);
+}
+.sar-imagery-details[open] summary {
+  margin-bottom: 6px;
+}
 .sar-table .site-class {
   font-size: 11.5px;
   font-weight: 600;

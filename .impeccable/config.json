@@ -35,6 +35,12 @@
         ],
         "createdAt": "2026-08-31T19:13:50.982Z",
         "reason": "both side-tab matches in theme.css adjudicated intentional: category-chip spine (same-hue border, dual-agent critique FP) and state-media credibility marker (DESIGN.md non-negotiable product commitment)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0, 0, 0, 0.72)",
+        "createdAt": "2026-09-04T12:41:29.555Z",
+        "reason": "Claude: dialog ::backdrop scrim — ::backdrop cannot reliably read theme custom properties, and a dark scrim is theme-agnostic lightbox convention"
       }
     ]
   }

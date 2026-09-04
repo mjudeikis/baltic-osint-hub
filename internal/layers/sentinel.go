@@ -33,8 +33,9 @@ type Sentinel struct {
 }
 
 const (
-	cdseTokenURL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
-	cdseStatsURL = "https://sh.dataspace.copernicus.eu/api/v1/statistics"
+	cdseTokenURL   = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+	cdseStatsURL   = "https://sh.dataspace.copernicus.eu/api/v1/statistics"
+	cdseProcessURL = "https://sh.dataspace.copernicus.eu/api/v1/process"
 
 	// brightThresholdDB: bare soil and grass sit near -15 dB, forest around
 	// -8 dB; metal vehicles, aircraft and rolling stock are corner reflectors
@@ -88,6 +89,36 @@ function evaluatePixel(s) {
     dataMask: [s.dataMask]
   };
 }`, brightThresholdDB)
+
+// imageEvalscript renders one pass as the detector sees it: grayscale VV
+// backscatter, with pixels above the bright threshold — the ones the
+// bright-pixel fraction counts — drawn in red. Both halves of a before/after
+// pair share this fixed scale, so a visual difference is a data difference.
+var imageEvalscript = fmt.Sprintf(`//VERSION=3
+function setup() {
+  return { input: [{ bands: ["VV", "dataMask"] }], output: { bands: 4 } };
+}
+function evaluatePixel(s) {
+  var db = 10 * Math.log10(Math.max(s.VV, 1e-7));
+  if (db > %.1f) return [1.0, 0.3, 0.2, s.dataMask];
+  var v = Math.max(0, Math.min(1, (db + 25) / 22));
+  return [v, v, v, s.dataMask];
+}`, brightThresholdDB)
+
+// imageSize picks output dimensions at the sensor's 10 m native pixel
+// spacing — finer would invent detail the instrument never measured. The
+// ceiling exists so a mis-sized AOI cannot blow the processing-unit budget;
+// at 2048 it only bites on sites wider than ~20 km, which lose resolution
+// gracefully instead of failing the request (the API caps at 2500).
+func imageSize(aoi AOI) (w, h int) {
+	centreLat, _ := aoi.Centre()
+	widthM := (aoi.Box.LonMax - aoi.Box.LonMin) * metresPerDegreeLat * math.Cos(centreLat*math.Pi/180)
+	heightM := (aoi.Box.LatMax - aoi.Box.LatMin) * metresPerDegreeLat
+	clamp := func(m float64) int {
+		return int(math.Round(math.Min(2048, math.Max(64, m/10))))
+	}
+	return clamp(widthM), clamp(heightM)
+}
 
 func (s *Sentinel) token2(ctx context.Context) (string, error) {
 	form := url.Values{
@@ -186,6 +217,13 @@ func (s *Sentinel) Run(ctx context.Context, db *store.Store, log *slog.Logger) e
 			if added {
 				log.Info("sar anomaly", "aoi", aoi.Key, "latest", a.Latest,
 					"median", a.Median, "z", a.ZScore)
+			}
+			// A rendering pair lets the reader see the change instead of being
+			// sent off to reconstruct it in the Copernicus Browser. Failure is
+			// logged, not returned: the verdict above is already stored, and a
+			// missing picture must not reopen the layer's gate.
+			if err := s.ensureAnomalyImages(ctx, db, aoi, series); err != nil {
+				log.Warn("sar imagery failed", "aoi", aoi.Key, "err", err)
 			}
 		}
 		log.Info("sar aoi updated", "aoi", aoi.Key, "intervals", len(obs),
@@ -350,4 +388,129 @@ func firstBand(bands map[string]bandStats) (bandStats, bool) {
 		return b, true
 	}
 	return bandStats{}, false
+}
+
+// representativeBefore picks the baseline pass whose bright fraction sits
+// closest to the baseline median — the site's "typical" state, which is what
+// the anomaly was measured against. The pass immediately before the flagged
+// one would be the obvious pick, but a gradual build-up contaminates it; the
+// median pass cannot be contaminated without moving the baseline itself. Ties
+// go to the more recent pass, whose scene conditions are most comparable.
+// Mirrors DetectAnomaly's reference gap so the pool matches the verdict's.
+func representativeBefore(series []store.SARObservation) store.SARObservation {
+	baseline := series[:len(series)-1]
+	if gapped := len(series) - 1 - ReferenceGap; gapped >= MinBaselinePoints {
+		baseline = series[:gapped]
+	}
+	values := make([]float64, len(baseline))
+	for i, o := range baseline {
+		values[i] = o.BrightFraction
+	}
+	med := median(values)
+	best := baseline[0]
+	for _, o := range baseline[1:] {
+		if math.Abs(o.BrightFraction-med) <= math.Abs(best.BrightFraction-med) {
+			best = o
+		}
+	}
+	return best
+}
+
+// ensureAnomalyImages stores the before/after rendering pair for the flagged
+// interval, skipping work when a previous run already bought it.
+func (s *Sentinel) ensureAnomalyImages(ctx context.Context, db *store.Store, aoi AOI, series []store.SARObservation) error {
+	latest := series[len(series)-1]
+	if exists, err := db.SARImagesExist(ctx, aoi.Key, latest.Start); err != nil || exists {
+		return err
+	}
+	if len(series) < MinBaselinePoints+1 {
+		return nil // cannot flag without a baseline, but belt and braces
+	}
+	before := representativeBefore(series)
+
+	token, err := s.validToken(ctx)
+	if err != nil {
+		return err
+	}
+	beforePNG, err := s.render(ctx, token, aoi, before.Start, before.End)
+	if err != nil {
+		return fmt.Errorf("before: %w", err)
+	}
+	afterPNG, err := s.render(ctx, token, aoi, latest.Start, latest.End)
+	if err != nil {
+		return fmt.Errorf("after: %w", err)
+	}
+	if err := db.UpsertSARImage(ctx, aoi.Key, latest.Start, "before", before.Start, before.End, beforePNG); err != nil {
+		return err
+	}
+	return db.UpsertSARImage(ctx, aoi.Key, latest.Start, "after", latest.Start, latest.End, afterPNG)
+}
+
+// render asks the Process API for one PNG of the AOI over one pass interval,
+// with the same acquisition filters as the statistics request — a rendering
+// under different orbit geometry would show a difference the detector never
+// measured.
+func (s *Sentinel) render(ctx context.Context, token string, aoi AOI, from, to time.Time) ([]byte, error) {
+	w, h := imageSize(aoi)
+	body := map[string]any{
+		"input": map[string]any{
+			"bounds": map[string]any{
+				"bbox": []float64{aoi.Box.LonMin, aoi.Box.LatMin, aoi.Box.LonMax, aoi.Box.LatMax},
+				"properties": map[string]any{
+					"crs": "http://www.opengis.net/def/crs/EPSG/0/4326",
+				},
+			},
+			"data": []map[string]any{{
+				"type": "sentinel-1-grd",
+				"dataFilter": map[string]any{
+					"timeRange": map[string]string{
+						"from": from.Format(time.RFC3339),
+						"to":   to.Format(time.RFC3339),
+					},
+					"acquisitionMode": "IW",
+					"polarization":    "DV",
+					"orbitDirection":  orbitDirection,
+					"resolution":      "HIGH",
+				},
+				"processing": map[string]any{
+					"orthorectify": true,
+					"backCoeff":    "SIGMA0_ELLIPSOID",
+				},
+			}},
+		},
+		"output": map[string]any{
+			"width":  w,
+			"height": h,
+			"responses": []map[string]any{{
+				"identifier": "default",
+				"format":     map[string]string{"type": "image/png"},
+			}},
+		},
+		"evalscript": imageEvalscript,
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cdseProcessURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "image/png")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("process: status %d: %.200s", resp.StatusCode, data)
+	}
+	return data, nil
 }

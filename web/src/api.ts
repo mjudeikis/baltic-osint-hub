@@ -215,6 +215,15 @@ export interface SarObservation {
   sample_count: number;
 }
 
+// One stored Sentinel-1 rendering of a flagged site; kind is "before"
+// (representative baseline pass) or "after" (the flagged pass).
+export interface SarImageMeta {
+  kind: string;
+  captured_start: string;
+  captured_end: string;
+  url: string;
+}
+
 export interface SarAOI {
   key: string;
   label: string;
@@ -233,6 +242,7 @@ export interface SarAOI {
   median: number;
   baseline: number;
   scene_shifted: boolean;
+  images?: SarImageMeta[];
 }
 
 export interface Layers {

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -43,6 +44,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/layers/air", s.handleAir)
 	mux.HandleFunc("GET /api/layers/sea", s.handleSea)
 	mux.HandleFunc("GET /api/layers/sar", s.handleSAR)
+	mux.HandleFunc("GET /api/layers/sar/image/{aoi}/{kind}", s.handleSARImage)
 	mux.HandleFunc("GET /api/layers/certpl", s.handleCertPL)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -472,6 +474,43 @@ func (s *Server) handleCertPL(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, out)
 }
 
+// handleSARImage serves one stored before/after rendering as a PNG. The pair
+// is small and changes at most once per pass cycle, so it carries a longer
+// cache window than the JSON endpoints.
+func (s *Server) handleSARImage(w http.ResponseWriter, r *http.Request) {
+	kind := r.PathValue("kind")
+	if kind != "before" && kind != "after" {
+		http.Error(w, "kind must be before or after", http.StatusBadRequest)
+		return
+	}
+	key := r.PathValue("aoi")
+	if !slices.ContainsFunc(layers.MonitoredAOIs, func(a layers.AOI) bool { return a.Key == key }) {
+		http.Error(w, "unknown site", http.StatusNotFound)
+		return
+	}
+	img, err := s.db.LatestSARImage(r.Context(), key, kind)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if img == nil {
+		http.Error(w, "no imagery stored for this site", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Write(img.PNG)
+}
+
+// sarImageMeta advertises one stored rendering: the UI reads the capture
+// window for its caption and fetches the pixels from URL.
+type sarImageMeta struct {
+	Kind          string    `json:"kind"`
+	CapturedStart time.Time `json:"captured_start"`
+	CapturedEnd   time.Time `json:"captured_end"`
+	URL           string    `json:"url"`
+}
+
 // sarAOI is one monitored area with its measurement series and current verdict.
 type sarAOI struct {
 	Key          string                 `json:"key"`
@@ -491,6 +530,8 @@ type sarAOI struct {
 	Median       float64                `json:"median"`
 	Baseline     int                    `json:"baseline"`
 	SceneShifted bool                   `json:"scene_shifted"`
+	// The newest stored before/after rendering pair, when one exists.
+	Images []sarImageMeta `json:"images,omitempty"`
 }
 
 func (s *Server) handleSAR(w http.ResponseWriter, r *http.Request) {
@@ -505,6 +546,20 @@ func (s *Server) handleSAR(w http.ResponseWriter, r *http.Request) {
 		z := a.ZScore
 		if math.IsInf(z, 0) || math.IsNaN(z) {
 			z = 0 // JSON has no Infinity; the Detected flag carries the verdict
+		}
+		metas, err := s.db.SARImageMetas(r.Context(), aoi.Key)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		var images []sarImageMeta
+		for _, m := range metas {
+			images = append(images, sarImageMeta{
+				Kind:          m.Kind,
+				CapturedStart: m.CapturedStart,
+				CapturedEnd:   m.CapturedEnd,
+				URL:           "/api/layers/sar/image/" + aoi.Key + "/" + m.Kind,
+			})
 		}
 		out = append(out, sarAOI{
 			Key:          aoi.Key,
@@ -524,6 +579,7 @@ func (s *Server) handleSAR(w http.ResponseWriter, r *http.Request) {
 			Median:       a.Median,
 			Baseline:     a.Baseline,
 			SceneShifted: a.SceneShifted,
+			Images:       images,
 		})
 	}
 	s.writeJSON(w, out)

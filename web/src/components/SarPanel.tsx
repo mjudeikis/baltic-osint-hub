@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { SarAOI } from "../api";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { SarAOI, SarImageMeta } from "../api";
 import { cssColor, textColor } from "../taxonomy";
 
 // A compact, filterable table rather than one card per site: at ~50 sites the
@@ -248,7 +248,8 @@ export default function SarPanel({
           </thead>
           <tbody>
             {visible.map(({ aoi, status }) => (
-              <tr key={aoi.key} data-focused={focused === aoi.key || undefined}>
+              <Fragment key={aoi.key}>
+              <tr data-focused={focused === aoi.key || undefined}>
                 <td>
                   <button
                     className="linklike"
@@ -295,6 +296,13 @@ export default function SarPanel({
                   </a>
                 </td>
               </tr>
+              {/* The change itself, not just the verdict: the flagged pass
+                  beside the site's typical one, rendered on the same scale.
+                  Only flagged rows earn the space — a stored pair from an
+                  anomaly that has since cleared stays one click away in the
+                  Copernicus Browser instead of implying a current alert. */}
+              {status === "flagged" && <ImageryRow aoi={aoi} />}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -333,6 +341,122 @@ export default function SarPanel({
         deployment.
       </p>
     </>
+  );
+}
+
+const passDate = (iso: string): string =>
+  new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+
+// The before/after pair for a flagged site. Renders nothing when the
+// collector has not (yet) stored imagery — the pair appears on its next
+// hourly pass, and an empty frame would read as a broken page until then.
+function ImageryRow({ aoi }: { aoi: SarAOI }) {
+  const find = (kind: string): SarImageMeta | undefined =>
+    aoi.images?.find((i) => i.kind === kind);
+  const before = find("before");
+  const after = find("after");
+  if (!before || !after) return null;
+
+  // The stored observation behind each rendering, for its scene-average dB.
+  // Radar brightness moves with rain, snow and wind as well as with metal,
+  // and the images show raw pixels — so when the whole scene brightened, say
+  // so with a number rather than let red be read as equipment. A stored mean
+  // of exactly 0 dB is the column's missing-value default, not a measurement.
+  const passObs = (iso: string) =>
+    aoi.series.find((s) => new Date(s.start).getTime() === new Date(iso).getTime());
+  const beforeObs = passObs(before.captured_start);
+  const afterObs = passObs(after.captured_start);
+  const haveDB =
+    beforeObs && afterObs && beforeObs.mean_db !== 0 && afterObs.mean_db !== 0;
+  const dbDelta = haveDB ? afterObs.mean_db - beforeObs.mean_db : null;
+
+  // Click-to-enlarge. A native <dialog> gives Escape, focus trapping and the
+  // dimmed backdrop for free; closing it (either way) clears the state.
+  const [zoom, setZoom] = useState<{ url: string; caption: string } | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (zoom) dialogRef.current?.showModal();
+  }, [zoom]);
+
+  return (
+    <tr className="sar-imagery-row">
+      <td colSpan={8}>
+        {/* Collapsed by default: the verdict row above already carries the
+            alert, and two half-megabyte renderings per flagged site would
+            otherwise dominate the table. Native <details> (as the legend
+            uses) keeps it keyboard- and screen-reader-accessible for free,
+            and lazy-loaded images are not fetched until opened. */}
+        <details className="sar-imagery-details">
+        <summary>
+          Before / after imagery · {passDate(before.captured_start)} →{" "}
+          {passDate(after.captured_start)}
+        </summary>
+        <div className="sar-imagery">
+          {[
+            { img: before, obs: beforeObs, label: "Typical pass" },
+            { img: after, obs: afterObs, label: "Flagged pass" },
+          ].map(({ img, obs, label }) => {
+            const caption =
+              `${label} · ${passDate(img.captured_start)}` +
+              (obs && obs.mean_db !== 0 ? ` · scene ${obs.mean_db.toFixed(1)} dB` : "");
+            return (
+              <figure key={img.kind}>
+                {/* The thumbnail is downscaled to fit the table; the click
+                    shows the same PNG at its stored resolution. */}
+                <button
+                  className="sar-zoom"
+                  onClick={() => setZoom({ url: img.url, caption })}
+                  title="Enlarge"
+                >
+                  <img
+                    src={img.url}
+                    loading="lazy"
+                    alt={`${label} of ${aoi.label}, Sentinel-1 radar, ${passDate(img.captured_start)}. Click to enlarge.`}
+                  />
+                </button>
+                <figcaption>{caption}</figcaption>
+              </figure>
+            );
+          })}
+        </div>
+        <p className="sar-sub">
+          Sentinel-1 radar on a shared scale; red marks returns bright enough to
+          indicate metal — the pixels the detector counts. Rain, snow, harvest
+          and wind also move radar brightness: a difference confined to
+          hardstands, ramps and sidings means more than one spread across
+          fields and forest.
+        </p>
+        {dbDelta !== null && Math.abs(dbDelta) >= 1 && (
+          <p className="sar-sub" style={{ color: textColor("--status-warning") }}>
+            ◌ The whole scene is {Math.abs(dbDelta).toFixed(1)} dB{" "}
+            {dbDelta > 0 ? "brighter" : "darker"} in the flagged pass — likely
+            weather. The detector already discounts scene-wide shifts, but some
+            of the visible difference here may be rain or snow rather than
+            equipment.
+          </p>
+        )}
+        </details>
+        {zoom && (
+          <dialog
+            ref={dialogRef}
+            className="sar-lightbox"
+            onClose={() => setZoom(null)}
+            // A click on the dialog element itself is the backdrop, not the
+            // figure — close, matching what every lightbox trains people to do.
+            onClick={(e) => {
+              if (e.target === dialogRef.current) dialogRef.current.close();
+            }}
+          >
+            <figure>
+              <img src={zoom.url} alt={zoom.caption} />
+              <figcaption>
+                {zoom.caption} · Esc or click outside to close
+              </figcaption>
+            </figure>
+          </dialog>
+        )}
+      </td>
+    </tr>
   );
 }
 

@@ -4,6 +4,9 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/mjudeikis/baltic-osint-hub/internal/store"
 )
 
 func TestParseStatistics(t *testing.T) {
@@ -103,6 +106,37 @@ func TestResolutionDegreesGroundSquare(t *testing.T) {
 	}
 	if math.Abs(groundY-20) > 0.01 {
 		t.Errorf("ground resolution = %.3f m, want 20", groundY)
+	}
+}
+
+func TestRepresentativeBefore(t *testing.T) {
+	// A gradual build-up: the passes just before the flagged one are already
+	// elevated, so "previous pass" would show a before that looks like the
+	// after and hide the change. The median-typical pass must win instead.
+	series := make([]store.SARObservation, 0, 12)
+	for i, bf := range []float64{0.020, 0.021, 0.019, 0.020, 0.022, 0.020, 0.021, 0.020, 0.045, 0.052, 0.058, 0.065} {
+		series = append(series, store.SARObservation{
+			Start:          time.Date(2026, 6, 1+6*i, 0, 0, 0, 0, time.UTC),
+			End:            time.Date(2026, 6, 7+6*i, 0, 0, 0, 0, time.UTC),
+			BrightFraction: bf,
+		})
+	}
+	before := representativeBefore(series)
+	if before.BrightFraction > 0.025 {
+		t.Errorf("before pass bright=%v — picked an elevated pass, not a typical one", before.BrightFraction)
+	}
+	// Never the flagged pass itself.
+	if before.Start.Equal(series[len(series)-1].Start) {
+		t.Error("before pass is the flagged pass")
+	}
+}
+
+func TestImageSizeClamped(t *testing.T) {
+	for _, a := range MonitoredAOIs {
+		w, h := imageSize(a)
+		if w < 64 || w > 2048 || h < 64 || h > 2048 {
+			t.Errorf("%s: image size %dx%d outside [64,2048]", a.Key, w, h)
+		}
 	}
 }
 
