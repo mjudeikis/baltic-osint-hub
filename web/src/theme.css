@@ -733,8 +733,15 @@ div > section:first-child > .feed-day {
 }
 
 /* MapLibre popups ship a hardcoded white background; retheme with our
-   tokens so dark mode isn't white-on-white. */
-.maplibregl-popup-content {
+   tokens so dark mode isn't white-on-white.
+
+   Every selector is prefixed with .maplibregl-map because load order between
+   this file and MapLibre's own stylesheet is not ours to control: maplibre's
+   CSS rides in the lazy IncidentMap chunk and lands AFTER this file in a
+   production build, so an equal-specificity override silently loses there
+   while winning in dev. The extra class outranks maplibre's defaults
+   regardless of which stylesheet the bundler injects last. */
+.maplibregl-map .maplibregl-popup-content {
   background: var(--surface-1);
   color: var(--text-primary);
   border: 1px solid var(--border);
@@ -742,27 +749,27 @@ div > section:first-child > .feed-day {
   padding: 10px 12px;
   font: 12.5px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-.maplibregl-popup-content a {
+.maplibregl-map .maplibregl-popup-content a {
   color: var(--series-1);
 }
-.maplibregl-popup-close-button {
+.maplibregl-map .maplibregl-popup-close-button {
   color: var(--text-secondary);
   font-size: 16px;
 }
-.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
-.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
-.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+.maplibregl-map .maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-map .maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-map .maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
   border-top-color: var(--surface-1);
 }
-.maplibregl-popup-anchor-top .maplibregl-popup-tip,
-.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
-.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+.maplibregl-map .maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-map .maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-map .maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
   border-bottom-color: var(--surface-1);
 }
-.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+.maplibregl-map .maplibregl-popup-anchor-left .maplibregl-popup-tip {
   border-right-color: var(--surface-1);
 }
-.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+.maplibregl-map .maplibregl-popup-anchor-right .maplibregl-popup-tip {
   border-left-color: var(--surface-1);
 }
 
