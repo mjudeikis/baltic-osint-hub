@@ -87,7 +87,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - run: helm lint deploy/helm/baltic-osint-hub
       - run: |
           helm template osint deploy/helm/baltic-osint-hub --set route.enabled=true --set postgres.backup.enabled=true >/dev/null
@@ -156,7 +156,7 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
       # Chart.yaml's version is the OCI tag; pushing the same version again
       # overwrites it, which is fine for main.
