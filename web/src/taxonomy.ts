@@ -97,13 +97,16 @@ export interface ToneDef {
   cssVar: string;
 }
 
-export const TONES: Record<string, ToneDef> = {
+export type ToneKey = "positive" | "neutral" | "negative";
+
+export const TONES: Record<ToneKey, ToneDef> = {
   positive: { key: "positive", label: "Favourable", symbol: "▲", cssVar: "--status-good" },
   neutral: { key: "neutral", label: "Neutral", symbol: "●", cssVar: "--text-muted" },
   negative: { key: "negative", label: "Adverse", symbol: "▼", cssVar: "--status-critical" },
 };
 
-export const toneDef = (key: string): ToneDef => TONES[key] ?? TONES.neutral;
+export const toneDef = (key: string): ToneDef =>
+  (TONES as Record<string, ToneDef | undefined>)[key] ?? TONES.neutral;
 
 // Posture ladder, ascending: 1 calmest, 5 worst. Deliberately not DEFCON
 // numbering (which counts down) — the word carries the meaning.
@@ -125,7 +128,10 @@ export const postureTextColor = (level: number): string =>
 // Source credibility. State-controlled outlets are ingested deliberately so
 // the narrative aimed at the region is visible, but they must never be
 // presented like national broadcasting.
-export const CREDIBILITY: Record<string, { label: string; short: string; cssVar: string }> = {
+export const CREDIBILITY: Record<
+  "institutional" | "independent" | "state-controlled",
+  { label: string; short: string; cssVar: string }
+> = {
   institutional: { label: "Official or public-service source", short: "official", cssVar: "--text-muted" },
   independent: { label: "Independent reporting", short: "independent", cssVar: "--text-muted" },
   "state-controlled": {
@@ -147,6 +153,7 @@ export const severityColor = (sev: number): string =>
   cssColor(`--seq-${Math.min(Math.max(sev, 1), 5)}`);
 
 // The low steps of the severity ramp are light; white text on them fails
-// contrast, so the badge text flips to dark below step 3.
+// contrast, so the badge text flips to dark below step 3. Step 3 itself is
+// tuned in theme.css so white text clears 4.5:1 on it in both themes.
 export const severityTextColor = (sev: number): string =>
   sev <= 2 ? "#0b0b0b" : "#ffffff";

@@ -1,9 +1,12 @@
 // Collector runs one fetch+classify cycle and exits. It is designed to run
-// as a Kubernetes CronJob (every 30 minutes).
+// as a Kubernetes CronJob (hourly; see deploy/). Each source and layer keeps
+// its own minimum interval, so the schedule can be tightened without
+// multiplying upstream calls.
 package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -37,10 +40,16 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+	db.SetLogger(log)
 
 	// State-controlled outlets are monitored but must never move the
-	// posture reading; the store filters them out of tone counts.
-	store.StateControlledSources = sources.StateControlledList()
+	// posture reading; the store filters them out of every published count.
+	store.SetStateControlled(sources.StateControlledList())
+	log.Info("state-controlled sources excluded from counts", "sources", len(store.StateControlledSources))
+
+	// Retention runs whether or not the rest of the cycle completes, so a
+	// run that dies in classification still keeps the tables bounded.
+	defer prune(log, db)
 
 	fetchAll(ctx, log, db)
 	runLayers(ctx, log, db, cfg)
@@ -49,7 +58,9 @@ func main() {
 		log.Warn("OPENAI_API_KEY not set; skipping classification")
 		return
 	}
-	classify(ctx, log, db, enrich.NewClassifier(cfg.OpenAIAPIKey, cfg.EnrichModel, cfg.OpenAIBaseURL), cfg.MaxEnrichPerRun)
+	classify(ctx, log, db,
+		enrich.NewClassifier(cfg.OpenAIAPIKey, cfg.EnrichModel, cfg.OpenAIBaseURL).WithLogger(log),
+		cfg.MaxEnrichPerRun)
 
 	// Clustering runs after classification so items enriched in this same run
 	// are grouped immediately rather than a cycle late.
@@ -59,6 +70,20 @@ func main() {
 	// Snapshot last, so the archive records the reading as it stands after
 	// this run's classification and clustering rather than before them.
 	snapshotPosture(ctx, log, db)
+}
+
+// prune applies the retention policy. It uses its own short context so it
+// still runs when the run budget has been exhausted by the work before it.
+func prune(log *slog.Logger, db *store.Store) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	res, err := db.Prune(ctx)
+	if err != nil {
+		log.Error("prune", "err", err)
+		return
+	}
+	log.Info("pruned", "source_runs", res.SourceRuns, "raw_items", res.RawItems,
+		"air", res.Air, "firms", res.FIRMS, "sea", res.Sea, "sar_images", res.SARImages)
 }
 
 // snapshotPosture archives what the dashboard is publishing right now, so the
@@ -258,60 +283,107 @@ func classify(ctx context.Context, log *slog.Logger, db *store.Store, cls *enric
 
 	// Cheap keyword pre-filter first: off-region/off-topic items never
 	// reach the LLM.
-	var toClassify []store.RawItem
+	//
+	// State-controlled and independent items are batched separately. The
+	// item text is untrusted input to the model, and a single crafted post
+	// in a batch can steer the verdicts for the nineteen items around it. A
+	// state outlet's post is the one most likely to try; keeping it in its
+	// own batch bounds the damage to other state-media items, which the
+	// posture calculation already discounts.
+	var independent, stateRun []store.RawItem
 	for _, it := range pending {
-		if enrich.PassesPrefilter(it.Source, it.Title, it.Body) {
-			toClassify = append(toClassify, it)
+		if !enrich.PassesPrefilter(it.Source, it.Title, it.Body) {
+			if err := db.SetItemStatus(ctx, it.ID, store.StatusIrrelevant); err != nil {
+				log.Error("status", "id", it.ID, "err", err)
+			}
 			continue
 		}
-		if err := db.SetItemStatus(ctx, it.ID, store.StatusIrrelevant); err != nil {
-			log.Error("status", "id", it.ID, "err", err)
+		if sources.IsStateControlled(it.Source) {
+			stateRun = append(stateRun, it)
+		} else {
+			independent = append(independent, it)
 		}
 	}
-	log.Info("classifying", "pending", len(pending), "after_prefilter", len(toClassify))
+	log.Info("classifying", "pending", len(pending),
+		"after_prefilter", len(independent)+len(stateRun), "state_media", len(stateRun))
 
-	classified, relevant := 0, 0
-	for start := 0; start < len(toClassify); start += batchSize {
-		batch := toClassify[start:min(start+batchSize, len(toClassify))]
-		verdicts, err := cls.ClassifyBatch(ctx, batch)
-		if err != nil {
-			log.Error("classify batch", "err", err)
-			continue // items stay 'new' and are retried next run
-		}
-		for _, it := range batch {
-			v, ok := verdicts[it.ID]
-			if !ok {
-				continue // model skipped it; retry next run
-			}
-			classified++
-			if !v.Relevant {
-				_ = db.SetItemStatus(ctx, it.ID, store.StatusIrrelevant)
-				continue
-			}
-			occurred := time.Now()
-			if it.PublishedAt != nil {
-				occurred = *it.PublishedAt
-			}
-			inc := &store.Incident{
-				RawItemID:  it.ID,
-				Category:   v.Category,
-				Countries:  v.Countries,
-				Severity:   v.Severity,
-				Tone:       v.Tone,
-				Place:      v.Place,
-				SummaryEN:  v.Summary,
-				Lat:        v.Lat,
-				Lon:        v.Lon,
-				OccurredAt: occurred,
-			}
-			if err := db.InsertIncident(ctx, inc); err != nil {
-				log.Error("insert incident", "id", it.ID, "err", err)
-				_ = db.SetItemStatus(ctx, it.ID, store.StatusError)
-				continue
-			}
-			_ = db.SetItemStatus(ctx, it.ID, store.StatusClassified)
-			relevant++
+	var stats classifyStats
+	for _, group := range [][]store.RawItem{independent, stateRun} {
+		for start := 0; start < len(group); start += batchSize {
+			classifyBatch(ctx, log, db, cls, group[start:min(start+batchSize, len(group))], &stats)
 		}
 	}
-	log.Info("classification done", "classified", classified, "incidents", relevant)
+	log.Info("classification done", "classified", stats.classified, "incidents", stats.relevant,
+		"retired", stats.retired)
+}
+
+type classifyStats struct{ classified, relevant, retired int }
+
+// classifyBatch runs one batch, splitting it when the model's reply was cut
+// off by the token cap. A truncated reply for twenty items is usually a
+// reply that would fit for ten, so halving recovers most of the batch in
+// the same run rather than leaving it all for the next one. Every attempt
+// is counted first, so a batch that never succeeds is retired after
+// MaxClassifyAttempts rather than retried forever.
+func classifyBatch(ctx context.Context, log *slog.Logger, db *store.Store, cls *enrich.Classifier, batch []store.RawItem, stats *classifyStats) {
+	ids := make([]int64, len(batch))
+	for i, it := range batch {
+		ids[i] = it.ID
+	}
+	retired, err := db.RecordClassifyAttempt(ctx, ids)
+	if err != nil {
+		log.Error("record attempt", "err", err)
+		return
+	}
+	if len(retired) > 0 {
+		log.Warn("items retired after repeated classification failures", "ids", retired)
+		stats.retired += len(retired)
+	}
+
+	verdicts, err := cls.ClassifyBatch(ctx, batch)
+	if errors.Is(err, enrich.ErrTruncated) && len(batch) > 1 {
+		log.Warn("classify batch truncated; splitting", "size", len(batch))
+		half := len(batch) / 2
+		classifyBatch(ctx, log, db, cls, batch[:half], stats)
+		classifyBatch(ctx, log, db, cls, batch[half:], stats)
+		return
+	}
+	if err != nil {
+		log.Error("classify batch", "err", err, "size", len(batch))
+		return // items stay 'new' (or retired above) and are retried next run
+	}
+	for _, it := range batch {
+		v, ok := verdicts[it.ID]
+		if !ok {
+			continue // model skipped it; retry next run
+		}
+		stats.classified++
+		if !v.Relevant {
+			_ = db.SetItemStatus(ctx, it.ID, store.StatusIrrelevant)
+			continue
+		}
+		occurred := time.Now()
+		if it.PublishedAt != nil {
+			occurred = *it.PublishedAt
+		}
+		inc := &store.Incident{
+			RawItemID:  it.ID,
+			Category:   v.Category,
+			Countries:  v.Countries,
+			Severity:   v.Severity,
+			Tone:       v.Tone,
+			Place:      v.Place,
+			SummaryEN:  v.Summary,
+			Lat:        v.Lat,
+			Lon:        v.Lon,
+			OccurredAt: occurred,
+		}
+		if err := db.InsertIncident(ctx, inc); err != nil {
+			log.Error("insert incident", "id", it.ID, "err", err)
+			_ = db.SetItemStatus(ctx, it.ID, store.StatusError)
+			continue
+		}
+		_ = db.SetItemStatus(ctx, it.ID, store.StatusClassified)
+		stats.relevant++
+	}
 }

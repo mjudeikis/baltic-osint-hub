@@ -17,6 +17,38 @@ institutes, GDELT, targeted news queries, public Telegram channels, regional
 subreddits. Each source enforces its own minimum interval, so the cron schedule
 and upstream rate limits stay independent.
 
+The national press is read in the native languages as well as English — the
+English editions omit a good share of the domestic security reporting — and
+the Lithuanian and Latvian MoD and the Estonian Defence Forces are read in
+their own languages only, since both ministries quietly retired their English
+feeds in mid-2026 while the native ones stayed live. The classifier writes
+every summary in English regardless. A handful of targeted Google News
+queries (EN/LT/LV/ET/PL/RU) are the main lever for balance: two of them exist
+to surface arrests, convictions and reinforcement, which generic threat feeds
+under-report.
+
+### Cadence
+
+The collector runs **hourly**, but every source and layer enforces its own
+minimum interval, keyed off its last *successful* run. Changing the schedule
+therefore shifts worst-case staleness without multiplying calls to
+rate-limited upstreams; a failing source still retries on the next invocation.
+
+| Source / layer | Minimum interval |
+|---|---|
+| News RSS, Telegram, GDELT, Bluesky, Google News | 30 min |
+| Reddit (serialised, 10 s apart) | 1 h |
+| Think tanks, CERT, MoD feeds | 6 h |
+| OpenSky air snapshots | 30 min |
+| FIRMS thermal | 2 h |
+| gpsjam | 6 h (stores per day) |
+| Sentinel-1 SAR | 20 h |
+
+LLM spend tracks item volume, not schedule: deduplication means each item is
+classified exactly once regardless of how often the collector runs. A
+classification call is retried up to three times; an item that fails all
+three is marked errored and left out rather than guessed at.
+
 **De-duplication** happens in two stages, because they solve different problems.
 
 *Exact* de-duplication is by URL and then by normalised-title hash within a
@@ -111,6 +143,11 @@ the dashboard would report an ordinary week as a crisis.
 Unknown or missing tone defaults to neutral, never adverse. A backfill must
 never invent alarm.
 
+Tone exists because a threat-only feed reads as uniformly dire even in an
+ordinary week: the first live reading was 29 favourable developments against
+6 adverse ones, which the tone-less view had rendered as four countries in the
+red.
+
 ## Source credibility
 
 Russian and Belarusian state outlets are ingested **deliberately** — the
@@ -163,6 +200,10 @@ Rules:
   auditable rather than a vibe.
 - It answers **"is this week unusual?"** against the median of the trailing
   twelve weeks, and says "not enough history yet" when it cannot.
+- Next to the reading, the dashboard links each country's official civil
+  preparedness guidance (LT72, 72 stundas, kriis.ee, RCB). Reporting a threat
+  without telling the reader what to do with it is how a monitor becomes a
+  source of anxiety rather than readiness.
 - Counts are **per event, not per article** (see de-duplication above).
 - **The top two levels require corroboration.** High and Severe need a
   severity-4 or -5 adverse event carried by at least two independent sources.

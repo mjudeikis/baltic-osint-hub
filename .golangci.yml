@@ -1,0 +1,39 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - misspell
+  settings:
+    errcheck:
+      # Deferred Close on response bodies / connections / pgx batches and the
+      # ignored return of os.Setenv in the .env loader are deliberate;
+      # flagging them adds noise without finding bugs.
+      exclude-functions:
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (net.Conn).Close
+        - (*github.com/gorilla/websocket.Conn).Close
+        - (github.com/jackc/pgx/v5.BatchResults).Close
+        - (net/http.ResponseWriter).Write
+        - os.Setenv
+  exclusions:
+    paths:
+      # Vendored JS packages occasionally ship Go files (flatted does).
+      - web/
+      - node_modules/
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    paths:
+      - web/
+      - node_modules/

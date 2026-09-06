@@ -2,5 +2,11 @@ apiVersion: v2
 name: baltic-osint-hub
 description: Public OSINT dashboard tracking hybrid threats in the Baltics and Poland
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+# Chart version: bump on any change under deploy/helm. appVersion tracks the
+# application release the chart defaults are written for; the image tag is
+# still chosen by values (see docs/self-hosting.md#versioning).
+version: 0.2.0
+appVersion: "0.2.0"
+home: https://osintbaltic.com
+sources:
+  - https://github.com/mjudeikis/baltic-osint-hub

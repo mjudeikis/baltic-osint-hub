@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"math"
@@ -46,9 +47,24 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/layers/sar", s.handleSAR)
 	mux.HandleFunc("GET /api/layers/sar/image/{aoi}/{kind}", s.handleSARImage)
 	mux.HandleFunc("GET /api/layers/certpl", s.handleCertPL)
+	// Liveness: the process is up. Readiness: it can also reach its
+	// database, so a server whose Postgres is gone is taken out of rotation
+	// rather than answering every request with 500.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	mux.HandleFunc("GET /readyz", s.handleReady)
+}
+
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := s.db.Ping(ctx); err != nil {
+		s.log.Error("readiness", "err", err)
+		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // allowCORS marks a response as readable by any origin. The whole API is
@@ -59,6 +75,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 // would be poor manners.
 func allowCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+}
+
+// httpError is http.Error with the CORS header, so a third-party page gets
+// to read the status of a failed call instead of an opaque network error.
+func httpError(w http.ResponseWriter, msg string, code int) {
+	allowCORS(w)
+	http.Error(w, msg, code)
 }
 
 // writeJSON sends the payload with a short public cache window. It is
@@ -87,10 +110,10 @@ func filterFrom(r *http.Request) store.IncidentFilter {
 	if v, err := strconv.Atoi(q.Get("severity")); err == nil {
 		f.Severity = v
 	}
-	if v, err := strconv.Atoi(q.Get("limit")); err == nil {
+	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 {
 		f.Limit = v
 	}
-	if v, err := strconv.Atoi(q.Get("offset")); err == nil {
+	if v, err := strconv.Atoi(q.Get("offset")); err == nil && v > 0 {
 		f.Offset = v
 	}
 	if v, err := time.Parse(time.RFC3339, q.Get("since")); err == nil {
@@ -106,6 +129,10 @@ func filterFrom(r *http.Request) store.IncidentFilter {
 	if v, err := time.Parse("2006-01-02", q.Get("day")); err == nil {
 		f.Since, f.Until = v, v.AddDate(0, 0, 1)
 	}
+	// Clamps paging and, when no since/days/day was given, bounds the
+	// window to the default so a bare /api/incidents never groups the whole
+	// table to serve one page.
+	f.Normalize()
 	return f
 }
 
@@ -221,13 +248,19 @@ func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 	// it. Mirrors the rule engine's preference: corroborated first, then
 	// worst severity. Best-effort — a lookup failure degrades to the bare
 	// reading rather than failing the page's headline element.
+	//
+	// ExcludeStateOnly: the reading itself never counts state-only units, so
+	// the event named as its cause must not be one either — the banner would
+	// otherwise attribute a level set by independent reporting to a Kremlin
+	// claim.
 	if reading.Level >= posture.Elevated {
 		if list, err := s.db.ListIncidents(r.Context(), store.IncidentFilter{
-			Since:    time.Now().AddDate(0, 0, -7),
-			Tone:     "negative",
-			Severity: 4,
-			Country:  country,
-			Limit:    20,
+			Since:            time.Now().AddDate(0, 0, -7),
+			Tone:             "negative",
+			Severity:         4,
+			Country:          country,
+			Limit:            20,
+			ExcludeStateOnly: true,
 		}); err == nil && len(list) > 0 {
 			best := 0
 			score := func(i int) int {
@@ -282,7 +315,7 @@ func (s *Server) handlePostureHistory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHistoryDay(w http.ResponseWriter, r *http.Request) {
 	day, err := time.Parse("2006-01-02", r.PathValue("day"))
 	if err != nil {
-		http.Error(w, "day must be YYYY-MM-DD", http.StatusBadRequest)
+		httpError(w, "day must be YYYY-MM-DD", http.StatusBadRequest)
 		return
 	}
 	snap, err := s.db.PostureOn(r.Context(), day)
@@ -291,8 +324,7 @@ func (s *Server) handleHistoryDay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if snap == nil {
-		allowCORS(w)
-		http.Error(w, "no snapshot recorded for that day", http.StatusNotFound)
+		httpError(w, "no snapshot recorded for that day", http.StatusNotFound)
 		return
 	}
 	s.writeJSON(w, snap)
@@ -480,12 +512,12 @@ func (s *Server) handleCertPL(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSARImage(w http.ResponseWriter, r *http.Request) {
 	kind := r.PathValue("kind")
 	if kind != "before" && kind != "after" {
-		http.Error(w, "kind must be before or after", http.StatusBadRequest)
+		httpError(w, "kind must be before or after", http.StatusBadRequest)
 		return
 	}
 	key := r.PathValue("aoi")
 	if !slices.ContainsFunc(layers.MonitoredAOIs, func(a layers.AOI) bool { return a.Key == key }) {
-		http.Error(w, "unknown site", http.StatusNotFound)
+		httpError(w, "unknown site", http.StatusNotFound)
 		return
 	}
 	img, err := s.db.LatestSARImage(r.Context(), key, kind)
@@ -494,11 +526,12 @@ func (s *Server) handleSARImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if img == nil {
-		http.Error(w, "no imagery stored for this site", http.StatusNotFound)
+		httpError(w, "no imagery stored for this site", http.StatusNotFound)
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
+	allowCORS(w)
 	w.Write(img.PNG)
 }
 
@@ -587,5 +620,5 @@ func (s *Server) handleSAR(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) fail(w http.ResponseWriter, err error) {
 	s.log.Error("query", "err", err)
-	http.Error(w, "internal error", http.StatusInternalServerError)
+	httpError(w, "internal error", http.StatusInternalServerError)
 }

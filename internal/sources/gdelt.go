@@ -67,12 +67,12 @@ func (f *GDELTFetcher) Fetch(ctx context.Context) ([]store.RawItem, error) {
 		return nil, fmt.Errorf("gdelt: status %d", resp.StatusCode)
 	}
 	var out gdeltResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(LimitBody(resp.Body)).Decode(&out); err != nil {
 		return nil, fmt.Errorf("gdelt: decode: %w", err)
 	}
 	var items []store.RawItem
 	for _, a := range out.Articles {
-		if a.URL == "" || a.Title == "" {
+		if a.Title == "" || !ValidLink(a.URL) {
 			continue
 		}
 		var published *time.Time

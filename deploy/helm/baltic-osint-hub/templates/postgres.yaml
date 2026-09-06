@@ -18,14 +18,34 @@ spec:
         {{- include "osint.labels" . | nindent 8 }}
         app.kubernetes.io/component: postgres
     spec:
+      automountServiceAccountToken: false
+      # Run as the image's postgres user (uid 70) from the start rather than
+      # letting the entrypoint start as root and drop privileges: that is
+      # what allows every capability to be dropped. fsGroup makes the PVC
+      # writable for that uid. The root filesystem stays writable because
+      # postgres needs /var/run/postgresql and /tmp.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgres
           image: {{ .Values.postgres.image }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: POSTGRES_USER
               value: {{ .Values.postgres.user | quote }}
             - name: POSTGRES_PASSWORD
-              value: {{ .Values.postgres.password | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "osint.postgresSecret" . }}
+                  key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               value: {{ .Values.postgres.database | quote }}
             - name: PGDATA
@@ -37,7 +57,23 @@ spec:
               mountPath: /var/lib/postgresql/data
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}]
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Generous on purpose: recovery after an unclean shutdown can take a
+          # while on a 5Gi volume, and killing it mid-recovery only restarts
+          # the recovery.
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
   volumeClaimTemplates:
     - metadata:
         name: data

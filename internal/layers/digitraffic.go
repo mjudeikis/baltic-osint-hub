@@ -95,7 +95,7 @@ func (a *AISArchive) Run(ctx context.Context, db *store.Store, log *slog.Logger)
 	}
 
 	var out digitrafficResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&out); err != nil {
 		return fmt.Errorf("digitraffic: decode: %w", err)
 	}
 
@@ -188,7 +188,7 @@ func (a *AISArchive) refreshVesselTypes(ctx context.Context, client *http.Client
 		return fmt.Errorf("digitraffic vessels: status %d", resp.StatusCode)
 	}
 	var vessels []digitrafficVessel
-	if err := json.NewDecoder(resp.Body).Decode(&vessels); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&vessels); err != nil {
 		return fmt.Errorf("digitraffic vessels: decode: %w", err)
 	}
 

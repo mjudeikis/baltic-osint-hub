@@ -72,3 +72,24 @@ func TestParseVerdictsNoJSON(t *testing.T) {
 		t.Fatal("expected error for response without JSON")
 	}
 }
+
+// Country tags outside the monitored region are dropped; an item left with
+// none is not an incident here.
+func TestParseVerdictsFiltersCountries(t *testing.T) {
+	verdicts, err := parseVerdicts(`[
+	  {"id": 1, "relevant": true, "category": "military", "countries": ["RU", "LT", "FI"], "severity": 2, "summary": "x"},
+	  {"id": 2, "relevant": true, "category": "military", "countries": ["RU", "BY"], "severity": 2, "summary": "y"},
+	  {"id": 3, "relevant": true, "category": "military", "countries": ["lt"], "severity": 2, "summary": "z"}]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := verdicts[0].Countries; len(got) != 1 || got[0] != "LT" {
+		t.Errorf("verdict 1 countries = %v, want [LT]", got)
+	}
+	if verdicts[1].Relevant {
+		t.Error("verdict 2 with only off-region countries should be irrelevant")
+	}
+	if verdicts[2].Relevant {
+		t.Error("verdict 3 with a malformed country code should be irrelevant")
+	}
+}

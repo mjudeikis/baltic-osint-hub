@@ -20,3 +20,24 @@ func TestStripHTML(t *testing.T) {
 		t.Errorf("stripHTML = %q, want %q", got, want)
 	}
 }
+
+// Links are rendered as anchors on a public page; only http(s) may get in.
+func TestValidLink(t *testing.T) {
+	cases := map[string]bool{
+		"https://example.test/a":       true,
+		"http://example.test/a?x=1":    true,
+		"HTTPS://example.test":         true,
+		"javascript:alert(1)":          false,
+		"data:text/html;base64,PHNjcg": false,
+		"ftp://example.test/f":         false,
+		"file:///etc/passwd":           false,
+		"/relative/path":               false,
+		"":                             false,
+		"not a url":                    false,
+	}
+	for in, want := range cases {
+		if got := ValidLink(in); got != want {
+			t.Errorf("ValidLink(%q) = %v, want %v", in, got, want)
+		}
+	}
+}

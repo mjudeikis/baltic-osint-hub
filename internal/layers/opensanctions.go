@@ -47,7 +47,8 @@ func (s *SanctionedVessels) Run(ctx context.Context, db *store.Store, log *slog.
 		return fmt.Errorf("opensanctions: status %d", resp.StatusCode)
 	}
 
-	vessels, rows, skipped, err := parseMaritimeCSV(resp.Body)
+	// The dataset is ~5MB today; the cap leaves room for it to grow.
+	vessels, rows, skipped, err := parseMaritimeCSV(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
 		return err
 	}

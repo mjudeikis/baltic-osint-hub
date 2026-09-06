@@ -1,6 +1,20 @@
+# The Dockerfile copies web/package.json, web/package-lock.json and web/
+# explicitly, so the root-only patterns below are anchored with a leading
+# slash: /package.json is the impeccable tooling manifest, not the app.
 .env
 .git
+.github
+.impeccable
+.claude
+node_modules
 web/node_modules
 web/dist
+web/tsconfig.tsbuildinfo
 deploy
+docs
+bin
+dist
 *.log
+*.md
+/package.json
+/package-lock.json

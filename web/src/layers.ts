@@ -1,3 +1,4 @@
+import { LayerSource } from "./api";
 import { Shape } from "./shapes";
 
 // Single source of truth for map layer identity: key, label, colour slot,
@@ -15,6 +16,10 @@ export interface MapLayerDef {
   // filled marks, so every key and swatch matches what is actually rendered.
   hollow: boolean;
   defaultVisible: boolean;
+  // The API endpoint this overlay is drawn from, so a failed fetch can be
+  // shown as "unavailable" on exactly the toggles it affects. Absent for the
+  // static context layers bundled with the page.
+  source?: LayerSource;
 }
 
 // Machine-measured layers use the muted --layer-* instrument family, never
@@ -24,20 +29,20 @@ export interface MapLayerDef {
 // learned the vocabulary. Desaturation also says "detection, not event" at a
 // glance — the epistemic split the legend used to carry in prose alone.
 export const MAP_LAYERS = [
-  { key: "jamming", label: "GPS jamming", cssVar: "--layer-jamming", shape: "hex", hollow: false, defaultVisible: true },
-  { key: "thermal", label: "Thermal (FIRMS)", cssVar: "--layer-thermal", shape: "square", hollow: false, defaultVisible: true },
-  { key: "air", label: "Air activity", cssVar: "--layer-air", shape: "triangle", hollow: false, defaultVisible: true },
+  { key: "jamming", label: "GPS jamming", cssVar: "--layer-jamming", shape: "hex", hollow: false, defaultVisible: true, source: "gpsjam" },
+  { key: "thermal", label: "Thermal (FIRMS)", cssVar: "--layer-thermal", shape: "square", hollow: false, defaultVisible: true, source: "firms" },
+  { key: "air", label: "Air activity", cssVar: "--layer-air", shape: "triangle", hollow: false, defaultVisible: true, source: "air" },
   // Notable sea events are deliberately drawn in the warning colour — a listed
   // vessel or an extended AIS gap is a status, not just an identity — so the
   // toggle and legend show the warning colour too.
-  { key: "sea", label: "Sea activity", cssVar: "--status-warning", shape: "diamond", hollow: false, defaultVisible: true },
+  { key: "sea", label: "Sea activity", cssVar: "--status-warning", shape: "diamond", hollow: false, defaultVisible: true, source: "sea" },
   // Baseline traffic is off by default: routine stops and short AIS gaps.
   // Ships stop constantly and legitimately, and short gaps are receiver
   // coverage far more often than dark activity — drawing them all buried the
   // handful of marks that mean something. Kept as an opt-in layer rather than
   // deleted, because the baseline is what makes an anomaly legible.
-  { key: "searoutine", label: "Sea: baseline", cssVar: "--layer-searoutine", shape: "diamond", hollow: true, defaultVisible: false },
-  { key: "sites", label: "Radar sites", cssVar: "--layer-sites", shape: "square", hollow: true, defaultVisible: true },
+  { key: "searoutine", label: "Sea: baseline", cssVar: "--layer-searoutine", shape: "diamond", hollow: true, defaultVisible: false, source: "sea" },
+  { key: "sites", label: "Radar sites", cssVar: "--layer-sites", shape: "square", hollow: true, defaultVisible: true, source: "sar" },
   { key: "cables", label: "Cables & pipelines", cssVar: "--layer-cable", shape: "line", hollow: false, defaultVisible: true },
   { key: "territory", label: "RU / BY territory", cssVar: "--layer-territory", shape: "area", hollow: false, defaultVisible: true },
 ] as const satisfies readonly MapLayerDef[];
@@ -54,7 +59,12 @@ export const INCIDENTS_DEF = {
   hollow: false,
 };
 
-export const layerDef = (key: string): Pick<MapLayerDef, "label" | "cssVar" | "shape" | "hollow"> =>
+// Known coverage gaps are product facts, stated wherever the layer is
+// described — never smoothed over. An empty corridor here is no data.
+export const SEA_COVERAGE_GAP =
+  "AIS history has no coverage in the NordBalt corridor (Lithuania–Sweden): an empty NordBalt means no data was received, not that the corridor was quiet.";
+
+export const layerDef = (key: string): Pick<MapLayerDef, "label" | "cssVar" | "shape" | "hollow" | "source"> =>
   key === INCIDENTS_DEF.key
     ? INCIDENTS_DEF
     : MAP_LAYERS.find((l) => l.key === key) ?? INCIDENTS_DEF;

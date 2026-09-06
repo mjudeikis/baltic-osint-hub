@@ -40,7 +40,7 @@ func (f *TelegramFetcher) Fetch(ctx context.Context) ([]store.RawItem, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("t.me/s/%s: status %d", f.channel, resp.StatusCode)
 	}
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	doc, err := goquery.NewDocumentFromReader(LimitBody(resp.Body))
 	if err != nil {
 		return nil, fmt.Errorf("t.me/s/%s: parse: %w", f.channel, err)
 	}
@@ -61,10 +61,16 @@ func (f *TelegramFetcher) Fetch(ctx context.Context) ([]store.RawItem, error) {
 				published = &t
 			}
 		}
+		// data-post is scraped markup; it must produce a plain t.me link and
+		// nothing that could escape the path.
+		link := "https://t.me/" + post
+		if !ValidLink(link) || strings.ContainsAny(post, "?#@\\ ") || strings.Contains(post, "..") {
+			return
+		}
 		title := Truncate(text, 200)
 		items = append(items, store.RawItem{
 			Source:      f.Name(),
-			URL:         "https://t.me/" + post,
+			URL:         link,
 			Title:       title,
 			Body:        Truncate(text, 2000),
 			Lang:        f.lang,

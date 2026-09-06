@@ -1,0 +1,102 @@
+{{- if and .Values.postgres.enabled .Values.postgres.backup.enabled }}
+# Logical backups: pg_dump -Fc into a dedicated PVC, pruned to the newest
+# `postgres.backup.keep` files. Restore: docs/self-hosting.md#backups.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "osint.name" . }}-postgres-backup
+  labels:
+    {{- include "osint.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.postgres.backup.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.backup.storage }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "osint.name" . }}-postgres-backup
+  labels:
+    {{- include "osint.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.postgres.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            {{- include "osint.labels" . | nindent 12 }}
+            app.kubernetes.io/component: postgres-backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: pg-dump
+              image: {{ .Values.postgres.image }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                - name: PGHOST
+                  value: {{ include "osint.name" . }}-postgres
+                - name: PGUSER
+                  value: {{ .Values.postgres.user | quote }}
+                - name: PGDATABASE
+                  value: {{ .Values.postgres.database | quote }}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "osint.postgresSecret" . }}
+                      key: POSTGRES_PASSWORD
+                - name: KEEP
+                  value: {{ .Values.postgres.backup.keep | quote }}
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  out="/backups/{{ .Values.postgres.database }}-$(date -u +%Y%m%dT%H%M%SZ).dump"
+                  pg_dump -Fc --no-owner --file="$out.part"
+                  mv "$out.part" "$out"
+                  echo "wrote $out ($(du -h "$out" | cut -f1))"
+                  # Prune: newest first, drop everything past KEEP.
+                  ls -1t /backups/*.dump | tail -n +$((KEEP + 1)) | xargs -r rm -f --
+                  echo "kept: $(ls -1 /backups/*.dump | wc -l)"
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: {{ include "osint.name" . }}-postgres-backup
+            - name: tmp
+              emptyDir: {}
+{{- end }}

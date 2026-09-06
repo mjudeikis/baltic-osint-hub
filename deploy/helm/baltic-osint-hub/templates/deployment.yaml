@@ -5,7 +5,15 @@ metadata:
   labels:
     {{- include "osint.labels" . | nindent 4 }}
 spec:
+  # replicas must be 1: see server.replicas in values.yaml.
   replicas: {{ .Values.server.replicas }}
+  # Recreate, not RollingUpdate: the server runs the aisstream.io live AIS
+  # watch and the Digitraffic archive poller in-process. A rolling update
+  # would have old and new pods streaming side by side for the overlap,
+  # double-writing every detection. A few seconds of downtime per rollout is
+  # the cheaper failure.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "osint.labels" . | nindent 6 }}
@@ -16,32 +24,47 @@ spec:
         {{- include "osint.labels" . | nindent 8 }}
         app.kubernetes.io/component: server
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "osint.podSecurityContext" . | nindent 8 }}
       containers:
         - name: server
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ include "osint.image" . | quote }}
+          imagePullPolicy: {{ include "osint.pullPolicy" . }}
+          securityContext:
+            {{- include "osint.containerSecurityContext" . | nindent 12 }}
           ports:
             - containerPort: 8080
           # The whole secret is injected via envFrom (create it with
-          # --from-env-file=.env). Explicit env entries below take precedence,
-          # deliberately overriding the local-dev DATABASE_URL/STATIC_DIR a
-          # copied .env may carry.
+          # --from-env-file=.env; it must exist before install). Explicit env
+          # entries below take precedence, deliberately overriding the
+          # local-dev DATABASE_URL/STATIC_DIR a copied .env may carry.
           envFrom:
             - secretRef:
                 name: {{ .Values.existingSecret }}
-                optional: true
           env:
             {{- include "osint.dbEnv" . | nindent 12 }}
             - name: STATIC_DIR
               value: /srv/web
+          # /readyz pings the database, so the pod leaves the Service while
+          # Postgres is down instead of serving 500s; /healthz only proves
+          # the process is up, which is all a liveness probe should test.
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /healthz
               port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.server.resources | nindent 12 }}
 ---

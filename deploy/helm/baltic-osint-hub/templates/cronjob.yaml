@@ -7,12 +7,21 @@ metadata:
 spec:
   schedule: {{ .Values.collector.schedule | quote }}
   concurrencyPolicy: Forbid
+  # If the controller misses the slot (node down, API server busy) it still
+  # starts a run up to ten minutes late; beyond that the hour is skipped and
+  # the next one catches up — per-source intervals make the skip harmless.
+  startingDeadlineSeconds: 600
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      # Must exceed RUN_TIMEOUT_MINUTES: one run walks the whole SAR watchlist,
-      # which is a separate Copernicus round-trip per site.
+      # One retry, not the default six: a failed run has already spent up to
+      # an hour of OpenAI calls, and the next scheduled run picks up whatever
+      # was left undone anyway.
+      backoffLimit: 1
+      # Must exceed RUN_TIMEOUT_MINUTES (collector.runTimeoutMinutes): one run
+      # walks the whole SAR watchlist, which is a separate Copernicus
+      # round-trip per site.
       activeDeadlineSeconds: 3900
       template:
         metadata:
@@ -21,19 +30,24 @@ spec:
             app.kubernetes.io/component: collector
         spec:
           restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            {{- include "osint.podSecurityContext" . | nindent 12 }}
           containers:
             - name: collector
-              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              image: {{ include "osint.image" . | quote }}
+              imagePullPolicy: {{ include "osint.pullPolicy" . }}
+              securityContext:
+                {{- include "osint.containerSecurityContext" . | nindent 16 }}
               command: ["/usr/local/bin/collector"]
               # All keys come from the secret via envFrom (create it with
-              # --from-env-file=.env). Explicit env entries take precedence,
-              # deliberately overriding the local-dev DATABASE_URL a copied
-              # .env may carry, and pinning model/cost settings to values.
+              # --from-env-file=.env; it must exist before install). Explicit
+              # env entries take precedence, deliberately overriding the
+              # local-dev DATABASE_URL a copied .env may carry, and pinning
+              # model/cost settings to values.
               envFrom:
                 - secretRef:
                     name: {{ .Values.existingSecret }}
-                    optional: true
               env:
                 {{- include "osint.dbEnv" . | nindent 16 }}
                 - name: ENRICH_MODEL
@@ -44,5 +58,7 @@ spec:
                   value: {{ .Values.collector.maxClusterPerRun | quote }}
                 - name: CLUSTER_THRESHOLD
                   value: {{ .Values.collector.clusterThreshold | quote }}
+                - name: RUN_TIMEOUT_MINUTES
+                  value: {{ .Values.collector.runTimeoutMinutes | quote }}
               resources:
                 {{- toYaml .Values.collector.resources | nindent 16 }}

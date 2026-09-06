@@ -5,7 +5,7 @@ import { cellToBoundary, cellToLatLng } from "h3-js";
 import MapLegend from "./MapLegend";
 import { makeIcon, Swatch } from "../shapes";
 import { Incident, Layers } from "../api";
-import { INCIDENTS_DEF, MAP_LAYERS, OverlayKey } from "../layers";
+import { INCIDENTS_DEF, MAP_LAYERS, MapLayerDef, OverlayKey } from "../layers";
 import { categoryLabel, cssColor, severityColor, SEVERITY_LABELS } from "../taxonomy";
 
 // Encoding: incident markers (the human-reported layer) use the sequential
@@ -15,6 +15,11 @@ import { categoryLabel, cssColor, severityColor, SEVERITY_LABELS } from "../taxo
 // fixed; colour reinforces it but never carries it alone — see ../shapes.
 // Layer identity (key, label, colour, shape) lives in ../layers, shared with
 // the legend.
+
+// Feature properties as MapLibre hands them back: GeoJSON values of mixed
+// type, keyed by the names the *GeoJSON builders below chose.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PopupProps = Record<string, any>;
 
 // The overlays whose map icon is a shape bitmap, registered on load.
 const ICON_LAYERS = ["thermal", "air", "sea", "searoutine"] as const;
@@ -102,6 +107,9 @@ export default function IncidentMap({
         cooperativeGestures: true,
       });
     } catch {
+      // The constructor is the external system here; its failure is the
+      // state, and there is no later callback in which to record it.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMapFailed(true);
       return;
     }
@@ -434,6 +442,8 @@ export default function IncidentMap({
             : 900,
       },
     );
+    // A focused site must be visible: the toggle state follows the fly-to.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisible((v) => ({ ...v, sites: true }));
 
     // Held in a ref rather than torn down by the effect cleanup: clearing the
@@ -467,6 +477,11 @@ export default function IncidentMap({
     onFocusHandled?.();
   }, [focusedSite, loaded, layers, onFocusHandled]);
 
+  // A layer whose endpoint failed shows "unavailable", never a zero: a
+  // FIRMS outage must not read as a border with no fires on it.
+  const failed = layers?.failed ?? {};
+  const isDown = (o: MapLayerDef) =>
+    o.source !== undefined && failed[o.source] !== undefined;
   const counts: Record<OverlayKey, number> = {
     jamming: layers?.gpsjam.length ?? 0,
     thermal: layers?.firms.length ?? 0,
@@ -513,7 +528,9 @@ export default function IncidentMap({
           >
             <Swatch shape={o.shape} color={cssColor(o.cssVar)} filled={!o.hollow} />
             <span style={{ marginLeft: 5 }}>{o.label}</span>
-            {o.key !== "cables" && o.key !== "territory" && ` (${counts[o.key]})`}
+            {o.key !== "cables" &&
+              o.key !== "territory" &&
+              (isDown(o) ? " (unavailable)" : ` (${counts[o.key]})`)}
           </button>
         ))}
       </div>
@@ -532,7 +549,7 @@ export default function IncidentMap({
           explained under “What these layers mean”
         </span>
       </div>
-      <MapLegend />
+      <MapLegend failed={failed} />
     </>
   );
 }
@@ -540,7 +557,7 @@ export default function IncidentMap({
 // Shared by the notable and baseline sea layers — the same kind of thing gets
 // the same popup. A gap's length is the difference between a receiver dropout
 // and dark activity, so for gaps the popup states it outright.
-function seaPopup(p: Record<string, any>): string {
+function seaPopup(p: PopupProps): string {
   const dark =
     p.event === "ais-gap" && p.started
       ? ` · ${((new Date(p.when).getTime() - new Date(p.started).getTime()) / 3.6e6).toFixed(1)} h dark`
@@ -575,7 +592,7 @@ const popupLayers = new Set<string>();
 function bindPopup(
   m: maplibregl.Map,
   layerId: string,
-  html: (props: Record<string, any>) => string,
+  html: (props: PopupProps) => string,
 ) {
   popupLayers.add(layerId);
   m.on("click", layerId, (e) => {
@@ -588,7 +605,7 @@ function bindPopup(
     if (!f) return;
     new maplibregl.Popup({ maxWidth: "280px" })
       .setLngLat(e.lngLat)
-      .setHTML(html(f.properties as Record<string, any>))
+      .setHTML(html(f.properties as PopupProps))
       .addTo(m);
   });
   m.on("mouseenter", layerId, () => (m.getCanvas().style.cursor = "pointer"));

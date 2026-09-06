@@ -59,7 +59,7 @@ func (f *BlueskyFetcher) Fetch(ctx context.Context) ([]store.RawItem, error) {
 		return nil, fmt.Errorf("bluesky: status %d", resp.StatusCode)
 	}
 	var out bskyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(LimitBody(resp.Body)).Decode(&out); err != nil {
 		return nil, fmt.Errorf("bluesky: decode: %w", err)
 	}
 	cutoff := time.Now().Add(-48 * time.Hour)
@@ -71,9 +71,13 @@ func (f *BlueskyFetcher) Fetch(ctx context.Context) ([]store.RawItem, error) {
 		}
 		created := p.Record.CreatedAt
 		title := Truncate(p.Record.Text, 200)
+		link := fmt.Sprintf("https://bsky.app/profile/%s/post/%s", url.PathEscape(p.Author.Handle), url.PathEscape(rkey))
+		if !ValidLink(link) {
+			continue
+		}
 		items = append(items, store.RawItem{
 			Source:      f.Name(),
-			URL:         fmt.Sprintf("https://bsky.app/profile/%s/post/%s", p.Author.Handle, rkey),
+			URL:         link,
 			Title:       "@" + p.Author.Handle + ": " + title,
 			Body:        Truncate(p.Record.Text, 2000),
 			Lang:        "en",

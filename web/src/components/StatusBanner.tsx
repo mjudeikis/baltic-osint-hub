@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import { SourceStatus } from "../api";
+import { freshness, relative } from "../freshness";
 import { cssColor, textColor } from "../taxonomy";
 
-// The collector runs hourly, so anything much past that means collection has
-// stopped rather than simply being between runs.
-const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
-const CRITICAL_AFTER_MS = 6 * 60 * 60 * 1000;
+// Direct links to the methodology, not the repository root: the auditability
+// claim depends on a reader being able to reach these in one click.
+export const METHODOLOGY_DOCS = [
+  { label: "Methodology", href: "https://github.com/mjudeikis/baltic-osint-hub/blob/main/docs/methodology.md" },
+  { label: "SAR detection", href: "https://github.com/mjudeikis/baltic-osint-hub/blob/main/docs/sar-detection.md" },
+  { label: "Watchlist", href: "https://github.com/mjudeikis/baltic-osint-hub/blob/main/docs/watchlist.md" },
+  { label: "Ukraine 2021–22 baseline", href: "https://github.com/mjudeikis/baltic-osint-hub/blob/main/docs/ukraine-2021-22.md" },
+];
 
 export default function StatusBanner({ sources }: { sources: SourceStatus[] }) {
   // Re-render on a timer so "14 min ago" stays honest on a dashboard that is
@@ -24,18 +29,14 @@ export default function StatusBanner({ sources }: { sources: SourceStatus[] }) {
     );
   }
 
-  const lastRun = sources.reduce<Date | null>((latest, s) => {
-    const t = new Date(s.last_run);
-    return !latest || t > latest ? t : latest;
-  }, null);
+  const { lastRun, age, state } = freshness(sources);
   const failing = sources.filter((s) => s.error);
-  const age = lastRun ? Date.now() - lastRun.getTime() : Infinity;
 
   // ◆/◇ are status-alarm glyphs; ▲/▼ are reserved for tone direction.
   const status =
-    age > CRITICAL_AFTER_MS
+    state === "stalled"
       ? { label: "Collection stalled", symbol: "◆", cssVar: "--status-critical" }
-      : age > STALE_AFTER_MS
+      : state === "stale"
         ? { label: "Data may be stale", symbol: "◇", cssVar: "--status-warning" }
         : { label: "Live", symbol: "●", cssVar: "--status-good" };
 
@@ -69,15 +70,15 @@ export default function StatusBanner({ sources }: { sources: SourceStatus[] }) {
       <span style={{ color: "var(--text-muted)" }}>collector runs hourly</span>
       <a
         className="banner-repo"
-        href="https://github.com/mjudeikis/baltic-osint-hub"
+        href={METHODOLOGY_DOCS[0]!.href}
         target="_blank"
         rel="noopener noreferrer"
-        title="Source code, methodology and the full source list"
+        title="Read the methodology — how events are counted, classified and scored"
       >
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="currentColor">
           <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
         </svg>
-        source
+        methodology
       </a>
       {/* Pre-filled with what the reader was looking at, so a misclassified
           item or a wrong site can be reported without retyping the context. */}
@@ -114,15 +115,4 @@ function issueURL(lastRun: Date | null, failing: number, total: number): string 
   ].join("\n");
   const q = new URLSearchParams({ title: "", body });
   return `https://github.com/mjudeikis/baltic-osint-hub/issues/new?${q}`;
-}
-
-function relative(ms: number): string {
-  if (!isFinite(ms)) return "unknown";
-  const min = Math.floor(ms / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min} min ago`;
-  const hours = Math.floor(min / 60);
-  if (hours < 24) return `${hours} h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
 }

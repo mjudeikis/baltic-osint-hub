@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -53,4 +55,28 @@ func Truncate(s string, max int) string {
 		cut = cut[:len(cut)-1]
 	}
 	return cut
+}
+
+// MaxFeedBytes caps how much of an upstream response is read. A feed is a
+// few hundred kilobytes; a response that keeps going is either broken or
+// hostile, and either way it must not be buffered into memory whole.
+const MaxFeedBytes = 8 << 20
+
+// LimitBody bounds an upstream body at MaxFeedBytes.
+func LimitBody(r io.Reader) io.Reader { return io.LimitReader(r, MaxFeedBytes) }
+
+// ValidLink reports whether a feed item's link is an absolute http(s) URL.
+// Links are stored and later rendered as anchors on a public page, so a
+// javascript: or data: link from a feed would become a clickable payload;
+// anything else is dropped at ingest rather than filtered at render.
+func ValidLink(link string) bool {
+	u, err := url.Parse(link)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+		return true
+	}
+	return false
 }

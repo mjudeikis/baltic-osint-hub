@@ -123,7 +123,7 @@ func (o *OpenSky) fetchToken(ctx context.Context) (string, error) {
 	var out struct {
 		AccessToken string `json:"access_token"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || out.AccessToken == "" {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil || out.AccessToken == "" {
 		return "", fmt.Errorf("token response: status %d", resp.StatusCode)
 	}
 	return out.AccessToken, nil

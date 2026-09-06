@@ -35,10 +35,12 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+	db.SetLogger(log)
 
 	// State-controlled outlets are monitored but must never move the
-	// posture reading; the store filters them out of tone counts.
-	store.StateControlledSources = sources.StateControlledList()
+	// posture reading; the store filters them out of every published count.
+	store.SetStateControlled(sources.StateControlledList())
+	log.Info("state-controlled sources excluded from counts", "sources", len(store.StateControlledSources))
 
 	// AIS watch is a persistent stream, so it lives in the server process
 	// rather than the collector cron.
@@ -53,8 +55,17 @@ func main() {
 	// at 12 knots moves 12 nautical miles between them. It needs no key.
 	go runAISArchive(ctx, db, log, cfg.AISArchiveInterval)
 
+	// API routes are mounted on their own mux and wrapped: a per-request
+	// deadline so one slow query cannot hold a connection indefinitely, and a
+	// per-client token bucket so one caller in a loop cannot monopolise the
+	// database. Static files are cheap and left outside both.
+	apiMux := http.NewServeMux()
+	api.New(db, log).Register(apiMux)
+	limiter := api.NewRateLimiter(10, 30)
 	mux := http.NewServeMux()
-	api.New(db, log).Register(mux)
+	mux.Handle("/api/", limiter.Wrap(api.WithTimeout(15*time.Second, apiMux)))
+	mux.Handle("/healthz", apiMux)
+	mux.Handle("/readyz", apiMux)
 	if cfg.StaticDir != "" {
 		mux.Handle("/", spaHandler(cfg.StaticDir))
 	}
@@ -63,6 +74,11 @@ func main() {
 		Addr:              cfg.ListenAddr,
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		// Exports stream up to 500 rows of CSV or GeoJSON, which is still
+		// small, but a slow client draining one should get a minute.
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 	go func() {
 		<-ctx.Done()

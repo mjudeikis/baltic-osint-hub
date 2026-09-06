@@ -40,7 +40,7 @@ export default function SideNav({ items }: { items: NavItem[] }) {
             {/* Plain anchors: native hash navigation works even when the
                 browser throttles scripted scrolling (background tabs), and
                 CSS scroll-behavior handles the smoothness. */}
-            <a href={`#${i.id}`} aria-current={active === i.id ? "true" : undefined}>
+            <a href={`#${i.id}`} aria-current={active === i.id ? "location" : undefined}>
               {i.label}
             </a>
           </li>

@@ -24,8 +24,8 @@ export interface Posture {
   };
 }
 
-export const fetchPosture = (country?: string) =>
-  get<Posture>(`/api/stats/posture${country ? `?country=${country}` : ""}`);
+export const fetchPosture = (country?: string, signal?: AbortSignal) =>
+  get<Posture>(`/api/stats/posture${country ? `?country=${country}` : ""}`, signal);
 
 export interface Incident {
   id: number;
@@ -86,14 +86,30 @@ export interface SourceStatus {
 // schema, which renders as missing fields until the cache expires.
 const BUILD = (import.meta as { env?: Record<string, string> }).env?.VITE_BUILD_ID ?? "dev";
 
-async function get<T>(path: string): Promise<T> {
+// Every fetch takes an optional AbortSignal so a caller can cancel a request
+// its own state has moved past (a filter changed twice in quick succession),
+// combined with the timeout below. Older browsers lack AbortSignal.any; there
+// the caller's signal wins, since a superseded response is the worse bug.
+function withTimeout(signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(15_000);
+  if (!signal) return timeout;
+  if (typeof AbortSignal.any === "function") return AbortSignal.any([signal, timeout]);
+  return signal;
+}
+
+async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const url = path + (path.includes("?") ? "&" : "?") + "v=" + BUILD;
   // Without a timeout a hung request never resolves into an error state and
   // the page shows "loading" forever; 15 s is far beyond any healthy response.
-  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+  const res = await fetch(url, { signal: withTimeout(signal) });
   if (!res.ok) throw new Error(`${path}: ${res.status}`);
   return res.json();
 }
+
+// True for the rejection a caller's own abort produces, which is not an
+// error to report — the request was cancelled on purpose.
+export const isAbort = (e: unknown): boolean =>
+  e instanceof DOMException && e.name === "AbortError";
 
 export interface IncidentQuery {
   category?: string;
@@ -105,7 +121,7 @@ export interface IncidentQuery {
   limit?: number;
 }
 
-export function fetchIncidents(q: IncidentQuery): Promise<Incident[]> {
+export function fetchIncidents(q: IncidentQuery, signal?: AbortSignal): Promise<Incident[]> {
   const params = new URLSearchParams();
   if (q.category) params.set("category", q.category);
   if (q.tone) params.set("tone", q.tone);
@@ -114,20 +130,22 @@ export function fetchIncidents(q: IncidentQuery): Promise<Incident[]> {
   if (q.days) params.set("days", String(q.days));
   if (q.day) params.set("day", q.day);
   params.set("limit", String(q.limit ?? 200));
-  return get(`/api/incidents?${params}`);
+  return get(`/api/incidents?${params}`, signal);
 }
 
 // Both headline aggregates request min_severity=2: severity-1 analysis and
 // commentary stay in the feed but are not counted as incidents. The API's own
 // default stays 1 so external consumers see unchanged behaviour.
-export const fetchTimeline = (days: number, country?: string) =>
+export const fetchTimeline = (days: number, country?: string, signal?: AbortSignal) =>
   get<TimelineBucket[]>(
     `/api/stats/timeline?days=${days}&min_severity=2${country ? `&country=${country}` : ""}`,
+    signal,
   );
 
-export const fetchSummary = () =>
-  get<SummaryCell[]>("/api/stats/summary?min_severity=2");
-export const fetchSources = () => get<SourceStatus[]>("/api/sources");
+export const fetchSummary = (signal?: AbortSignal) =>
+  get<SummaryCell[]>("/api/stats/summary?min_severity=2", signal);
+export const fetchSources = (signal?: AbortSignal) =>
+  get<SourceStatus[]>("/api/sources", signal);
 
 export interface PostureRule {
   level: number;
@@ -143,7 +161,7 @@ export interface Meta {
   posture_adjustments: string[];
 }
 
-export const fetchMeta = () => get<Meta>("/api/meta");
+export const fetchMeta = (signal?: AbortSignal) => get<Meta>("/api/meta", signal);
 
 // --- signal layers ---
 
@@ -245,30 +263,61 @@ export interface SarAOI {
   images?: SarImageMeta[];
 }
 
+// The five endpoints behind the map overlays. Keys are the API's names; the
+// map's overlay keys map onto them in ../layers.
+export const LAYER_SOURCES = ["firms", "gpsjam", "air", "sea", "sar"] as const;
+export type LayerSource = (typeof LAYER_SOURCES)[number];
+
 export interface Layers {
   firms: FIRMSDetection[];
   gpsjam: GpsjamCell[];
   air: AirSighting[];
   sea: SeaEvent[];
   sar: SarAOI[];
+  // Endpoints that did not load this round, with the error. A failed layer
+  // is "unavailable", never "0 detections": an empty array here would render
+  // a FIRMS outage as a calm border, which is exactly the lie this product
+  // exists not to tell.
+  failed: Partial<Record<LayerSource, string>>;
 }
 
 // Settled per layer: one failing endpoint costs that layer, not the whole map.
-export async function fetchLayers(): Promise<Layers> {
-  const settled = <T>(r: PromiseSettledResult<T[]>): T[] =>
-    r.status === "fulfilled" ? r.value : [];
+export async function fetchLayers(signal?: AbortSignal): Promise<Layers> {
   const [firms, gpsjam, air, sea, sar] = await Promise.allSettled([
-    get<FIRMSDetection[]>("/api/layers/firms?days=7"),
-    get<GpsjamCell[]>("/api/layers/gpsjam"),
-    get<AirSighting[]>("/api/layers/air?days=2"),
-    get<SeaEvent[]>("/api/layers/sea?days=7"),
-    get<SarAOI[]>("/api/layers/sar"),
+    get<FIRMSDetection[]>("/api/layers/firms?days=7", signal),
+    get<GpsjamCell[]>("/api/layers/gpsjam", signal),
+    get<AirSighting[]>("/api/layers/air?days=2", signal),
+    get<SeaEvent[]>("/api/layers/sea?days=7", signal),
+    get<SarAOI[]>("/api/layers/sar", signal),
   ]);
-  return {
-    firms: settled(firms),
-    gpsjam: settled(gpsjam),
-    air: settled(air),
-    sea: settled(sea),
-    sar: settled(sar),
+  const failed: Layers["failed"] = {};
+  const settled = <T>(key: LayerSource, r: PromiseSettledResult<T[]>): T[] => {
+    if (r.status === "fulfilled") return r.value;
+    failed[key] = String(r.reason);
+    return [];
   };
+  const out: Layers = {
+    firms: settled("firms", firms),
+    gpsjam: settled("gpsjam", gpsjam),
+    air: settled("air", air),
+    sea: settled("sea", sea),
+    sar: settled("sar", sar),
+    failed,
+  };
+  // A caller's own abort is not five layer failures; surface it as the
+  // rejection the caller expects so it can be ignored like any other.
+  if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+  return out;
 }
+
+// One day of CERT.PL warning-list churn: domains added to and removed from
+// Poland's national malicious-domain list. Counts only — the list itself is
+// never surfaced here.
+export interface CertPLDay {
+  day: string;
+  added: number;
+  removed: number;
+}
+
+export const fetchCertPL = (days: number, signal?: AbortSignal) =>
+  get<CertPLDay[]>(`/api/layers/certpl?days=${days}`, signal);

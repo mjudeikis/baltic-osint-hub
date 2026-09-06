@@ -1,4 +1,6 @@
+import { memo } from "react";
 import { Incident, SummaryCell } from "../api";
+import { Freshness, staleNote } from "../freshness";
 import {
   COUNTRIES,
   COUNTRY_NAMES,
@@ -25,11 +27,14 @@ const MIN_BASELINE_SAMPLES = 8;
 // banner above it: level comes from adverse severity, never from raw volume.
 // Status glyphs are the ◆/◇/○ family; ▲/▼ belong exclusively to tone
 // direction, so one glyph never means "favourable" and "alarm" on one page.
-function level(
+export function level(
   adverse: number,
   maxSev: number,
   favourable: number,
   pendingSevere = false,
+  // True when the collector is not current. A tile with nothing in it over a
+  // stalled pipeline is "no data", never "Quiet" — no data is never calm.
+  stale = false,
 ): Level {
   if (maxSev >= 5) return { label: "Critical", cssVar: "--status-critical", symbol: "◆" };
   if (maxSev >= 4) return { label: "Serious", cssVar: "--status-serious", symbol: "◆" };
@@ -42,6 +47,7 @@ function level(
   if (adverse >= 3 && favourable <= adverse)
     return { label: "Elevated", cssVar: "--status-warning", symbol: "◇" };
   if (adverse > 0) return { label: "Watchful", cssVar: "--status-good", symbol: "○" };
+  if (stale) return { label: "No recent data", cssVar: "--status-warning", symbol: "◇" };
   return { label: "Quiet", cssVar: "--status-good", symbol: "○" };
 }
 
@@ -68,10 +74,13 @@ function topEvents(incidents: Incident[], cc: string): Incident[] {
     .slice(0, TOP_EVENTS);
 }
 
-export default function ThreatBoard({
+export default memo(ThreatBoard);
+
+function ThreatBoard({
   cells,
   incidents,
   onSelect,
+  fresh,
 }: {
   // null while the first response is in flight. Rendering an empty array
   // there would paint four "Quiet / 0 adverse" tiles — a fabricated all-clear
@@ -83,6 +92,9 @@ export default function ThreatBoard({
   // Drill-through: a country (and optionally a category) filters the incident
   // feed, so the numbers on this board lead to the items behind them.
   onSelect: (country: string, category: string) => void;
+  // Collector freshness. Counts are only as current as the pipeline behind
+  // them, so an empty tile over a stalled collector must say so.
+  fresh: Freshness;
 }) {
   if (cells === null) {
     return (
@@ -93,6 +105,11 @@ export default function ThreatBoard({
   }
   return (
     <>
+    {fresh.stale && (
+      <p className="board-stale" role="status">
+        {staleNote(fresh)} The counts below may be incomplete.
+      </p>
+    )}
     <div className="board" role="list" aria-label="Adverse activity by country">
       {COUNTRIES.map((cc) => {
         const rows = cells.filter((c) => c.country === cc);
@@ -117,7 +134,7 @@ export default function ThreatBoard({
         const rawSev = Math.max(0, ...rows.map((r) => r.max_severity ?? 0));
         const corrSev = Math.max(0, ...rows.map((r) => r.max_severity_corroborated ?? 0));
         const maxSev = Math.max(corrSev, Math.min(rawSev, 3));
-        const lv = level(adverse, maxSev, favourable, rawSev >= 4 && corrSev < 4);
+        const lv = level(adverse, maxSev, favourable, rawSev >= 4 && corrSev < 4, fresh.stale);
 
         // Only compare against the baseline once there is enough of one.
         const comparable = samples >= MIN_BASELINE_SAMPLES && baseline > 0;
@@ -239,6 +256,10 @@ export default function ThreatBoard({
         <li>
           <strong>Quiet / Watchful</strong> — no adverse events, or only minor
           ones.
+        </li>
+        <li>
+          <strong>No recent data</strong> — nothing recorded, but the collector
+          has not run recently, so an empty week cannot be called quiet.
         </li>
         <li>
           <strong>Elevated</strong> — several adverse events and little

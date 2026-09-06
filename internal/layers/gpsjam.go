@@ -64,7 +64,7 @@ func (g *Gpsjam) ingestDay(ctx context.Context, db *store.Store, day time.Time) 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("gpsjam: status %d", resp.StatusCode)
 	}
-	cells, err := parseGpsjam(resp.Body)
+	cells, err := parseGpsjam(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return 0, err
 	}

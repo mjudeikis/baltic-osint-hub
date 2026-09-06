@@ -351,6 +351,15 @@ const passDate = (iso: string): string =>
 // collector has not (yet) stored imagery — the pair appears on its next
 // hourly pass, and an empty frame would read as a broken page until then.
 function ImageryRow({ aoi }: { aoi: SarAOI }) {
+  // Click-to-enlarge. A native <dialog> gives Escape, focus trapping and the
+  // dimmed backdrop for free; closing it (either way) clears the state.
+  // Hooks sit above the early return below, as the rules of hooks require.
+  const [zoom, setZoom] = useState<{ url: string; caption: string } | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (zoom) dialogRef.current?.showModal();
+  }, [zoom]);
+
   const find = (kind: string): SarImageMeta | undefined =>
     aoi.images?.find((i) => i.kind === kind);
   const before = find("before");
@@ -369,14 +378,6 @@ function ImageryRow({ aoi }: { aoi: SarAOI }) {
   const haveDB =
     beforeObs && afterObs && beforeObs.mean_db !== 0 && afterObs.mean_db !== 0;
   const dbDelta = haveDB ? afterObs.mean_db - beforeObs.mean_db : null;
-
-  // Click-to-enlarge. A native <dialog> gives Escape, focus trapping and the
-  // dimmed backdrop for free; closing it (either way) clears the state.
-  const [zoom, setZoom] = useState<{ url: string; caption: string } | null>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (zoom) dialogRef.current?.showModal();
-  }, [zoom]);
 
   return (
     <tr className="sar-imagery-row">
@@ -478,7 +479,8 @@ function Sparkline({
   const span = max - min || 1;
   // The label carries the direction, not just the existence, of the trend —
   // "a chart is here" tells a screen-reader user nothing.
-  const delta = values[values.length - 1] - values[0];
+  const last = values[values.length - 1] ?? 0;
+  const delta = last - (values[0] ?? 0);
   const direction =
     Math.abs(delta) <= span * 0.15 ? "roughly flat" : delta > 0 ? "rising" : "falling";
   const stroke = cssColor(alert ? "--status-serious" : "--series-1");
@@ -498,7 +500,7 @@ function Sparkline({
       style={{ display: "block" }}
     >
       <path d={d} fill="none" stroke={stroke} strokeWidth={1.5} />
-      <circle cx={x(values.length - 1)} cy={y(values[values.length - 1])} r={2} fill={stroke} />
+      <circle cx={x(values.length - 1)} cy={y(last)} r={2} fill={stroke} />
     </svg>
   );
 }

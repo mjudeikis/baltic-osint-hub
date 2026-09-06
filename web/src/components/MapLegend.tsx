@@ -1,6 +1,7 @@
+import { Layers } from "../api";
 import { cssColor } from "../taxonomy";
 import { Swatch } from "../shapes";
-import { layerDef } from "../layers";
+import { layerDef, SEA_COVERAGE_GAP } from "../layers";
 
 // What each map layer is, why it is worth watching, and — the part that
 // matters most on a threat dashboard — what it does NOT mean.
@@ -46,7 +47,7 @@ const LAYERS: {
     key: "sea",
     what: "Live AIS inside the Baltic cable corridors. A solid diamond is a notable event — a vessel on the sanctions watchlist, or a cargo vessel, tanker or untyped vessel dark for 4+ hours. A hollow diamond is baseline traffic: routine stops and short AIS gaps.",
     why: "The Baltic's cables and pipelines are the region's most exposed infrastructure, and the 2023–25 incidents followed one pattern: a vessel stopping or slowing over a cable and dragging an anchor. A listed shadow-fleet tanker doing that is the specific thing worth seeing.",
-    limit: "Ships stop constantly and legitimately, and most short AIS gaps are receiver coverage rather than a transponder switched off — the median gap here is under two hours. Both stay hollow baseline rather than findings. Vessels at anchor and service craft (pilots, tugs, SAR) are excluded entirely. AIS can also be spoofed, so a clean corridor is not a safe one.",
+    limit: `${SEA_COVERAGE_GAP} Ships stop constantly and legitimately, and most short AIS gaps are receiver coverage rather than a transponder switched off — the median gap here is under two hours. Both stay hollow baseline rather than findings. Vessels at anchor and service craft (pilots, tugs, SAR) are excluded entirely. AIS can also be spoofed, so a clean corridor is not a safe one.`,
   },
   {
     key: "sites",
@@ -68,7 +69,7 @@ const LAYERS: {
   },
 ];
 
-export default function MapLegend() {
+export default function MapLegend({ failed = {} }: { failed?: Layers["failed"] }) {
   return (
     <details className="map-legend">
       <summary>What these layers mean</summary>
@@ -88,13 +89,22 @@ export default function MapLegend() {
       <dl>
         {LAYERS.map((l) => {
           const def = layerDef(l.key);
+          const down = def.source !== undefined && failed[def.source] !== undefined;
           return (
           <div className="map-legend-row" key={l.key}>
             <dt>
               <Swatch shape={def.shape} color={cssColor(def.cssVar)} filled={!def.hollow} />
               {def.label}
+              {down && <span className="map-legend-down">unavailable</span>}
             </dt>
             <dd>
+              {down && (
+                <p className="map-legend-limit">
+                  <strong>Not loaded right now.</strong> This layer's feed failed to
+                  load, so nothing is drawn for it. That is missing data, not a quiet
+                  map; the dashboard retries every few minutes.
+                </p>
+              )}
               <p>{l.what}</p>
               <p>
                 <strong>Why it matters.</strong> {l.why}

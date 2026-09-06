@@ -1,7 +1,9 @@
 package layers
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/mjudeikis/baltic-osint-hub/internal/store"
 )
@@ -55,5 +57,41 @@ func TestIsServiceVessel(t *testing.T) {
 		if store.IsServiceVessel(code) {
 			t.Errorf("ship type %d must NOT be suppressed (%s)", code, why)
 		}
+	}
+}
+
+// After a websocket reconnect every tracked vessel's last fix predates the
+// outage. Those silences are ours, not the ships', and must not be reported
+// as AIS gaps — once they were, and every reconnect flooded the sea layer.
+func TestAISGapNotReportedAcrossReconnect(t *testing.T) {
+	var events []string
+	w := &AISWatch{
+		vessels:   map[int64]*vesselState{},
+		shipTypes: map[int64]int{},
+		sink: func(_ context.Context, _ *aisMessage, _, event string, _ time.Time) {
+			events = append(events, event)
+		},
+	}
+	corridor := CableCorridors[0]
+	msg := &aisMessage{MessageType: "PositionReport"}
+	msg.MetaData.MMSI = 123
+	msg.Message.PositionReport.Latitude = (corridor.LatMin + corridor.LatMax) / 2
+	msg.Message.PositionReport.Longitude = (corridor.LonMin + corridor.LonMax) / 2
+	msg.Message.PositionReport.Sog = 10
+
+	// Seen inside the corridor three hours ago, on a previous session.
+	w.vessels[123] = &vesselState{corridor: corridor.Name, lastSeen: time.Now().Add(-3 * time.Hour)}
+	w.streamSince = time.Now().Add(-10 * time.Minute)
+	w.handlePosition(context.Background(), msg)
+	if len(events) != 0 {
+		t.Fatalf("gap spanning a reconnect was reported: %v", events)
+	}
+
+	// Same silence within one session is a genuine gap.
+	w.vessels[123] = &vesselState{corridor: corridor.Name, lastSeen: time.Now().Add(-3 * time.Hour)}
+	w.streamSince = time.Now().Add(-6 * time.Hour)
+	w.handlePosition(context.Background(), msg)
+	if len(events) != 1 || events[0] != "ais-gap" {
+		t.Fatalf("genuine gap not reported: %v", events)
 	}
 }

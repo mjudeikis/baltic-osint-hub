@@ -9,10 +9,15 @@ export default function PostureBanner({
   posture,
   scope,
   meta,
+  onViewIncident,
 }: {
   posture: Posture | null;
   scope: string;
   meta: Meta | null;
+  // Reveals one incident in the feed, widening the filters if they exclude
+  // it. A bare #incident-N anchor only worked when the feed happened to be
+  // open and unfiltered.
+  onViewIncident?: (id: number) => void;
 }) {
   if (!posture) {
     return (
@@ -77,7 +82,14 @@ export default function PostureBanner({
       {posture.trigger_event && (
         <p className="posture-explain">
           The event: “{posture.trigger_event.summary}” —{" "}
-          <a href={`#incident-${posture.trigger_event.id}`}>
+          <a
+            href={`#incident-${posture.trigger_event.id}`}
+            onClick={(e) => {
+              if (!onViewIncident) return;
+              e.preventDefault();
+              onViewIncident(posture.trigger_event!.id);
+            }}
+          >
             view in the feed
           </a>
         </p>

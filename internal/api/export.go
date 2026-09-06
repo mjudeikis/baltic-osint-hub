@@ -17,6 +17,23 @@ func exportFilename(prefix, ext string) string {
 	return prefix + "-" + time.Now().UTC().Format("2006-01-02") + ext
 }
 
+// csvSafe neutralises spreadsheet formula injection. Titles and summaries
+// are text we did not write: a headline beginning with "=" or "@" is opened
+// by Excel and LibreOffice as a formula, and "=HYPERLINK(...)" or a DDE call
+// in a public CSV is a real attack on whoever downloads it. Prefixing a
+// quote is the standard mitigation; the cell still reads as the text.
+// Numeric columns the export formats itself are not passed through here.
+func csvSafe(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
+	}
+	return s
+}
+
 func (s *Server) handleIncidentsCSV(w http.ResponseWriter, r *http.Request) {
 	out, err := s.listOut(r)
 	if err != nil {
@@ -49,22 +66,22 @@ func (s *Server) handleIncidentsCSV(w http.ResponseWriter, r *http.Request) {
 			strconv.FormatInt(o.ID, 10),
 			eventID,
 			o.OccurredAt.UTC().Format(time.RFC3339),
-			o.Category,
-			strings.Join(o.Countries, " "),
+			csvSafe(o.Category),
+			csvSafe(strings.Join(o.Countries, " ")),
 			strconv.Itoa(o.Severity),
-			o.Tone,
-			o.Place,
+			csvSafe(o.Tone),
+			csvSafe(o.Place),
 			floatOrEmpty(o.Lat),
 			floatOrEmpty(o.Lon),
-			o.SummaryEN,
+			csvSafe(o.SummaryEN),
 			strconv.FormatFloat(float64(o.Confidence), 'f', 2, 32),
-			o.ConfidenceLabel,
+			csvSafe(o.ConfidenceLabel),
 			strconv.Itoa(o.Reports),
-			strings.Join(o.Sources, " "),
-			o.Source,
-			o.Credibility,
-			o.Title,
-			o.URL,
+			csvSafe(strings.Join(o.Sources, " ")),
+			csvSafe(o.Source),
+			csvSafe(o.Credibility),
+			csvSafe(o.Title),
+			csvSafe(o.URL),
 		}
 		if err := cw.Write(rec); err != nil {
 			s.log.Error("csv row", "err", err)

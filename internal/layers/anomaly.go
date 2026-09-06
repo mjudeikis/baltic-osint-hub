@@ -126,7 +126,15 @@ func DetectAnomaly(series []store.SARObservation) Anomaly {
 	// there — a fit over a 1 dB spread says nothing about a 3 dB excursion.
 	// Region-wide weather does exactly this, and would otherwise light up
 	// every site simultaneously.
-	if a.SceneAdjusted && sceneOutOfRange(baseline, latest.MeanDB) {
+	//
+	// The guard applies whether or not the regression was usable. When the
+	// fit bails (too little dB spread in the baseline) the verdict falls back
+	// to the raw fraction, which is *more* exposed to scene-wide brightening,
+	// not less — and a baseline with almost no dB spread is exactly the one
+	// where a multi-dB excursion is furthest from anything observed. Series
+	// that carry no scene mean at all (all zeros) have no spread and no
+	// excursion, so the guard is inert for them.
+	if sceneOutOfRange(baseline, latest.MeanDB) {
 		a.SceneShifted = true
 		a.Detected = false
 	}

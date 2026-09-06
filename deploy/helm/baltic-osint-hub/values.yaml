@@ -1,9 +1,22 @@
 image:
   repository: ghcr.io/mjudeikis/baltic-osint-hub
+  # `latest` works out of the box. For anything you care about pin a build:
+  # CI tags every push to main as `:<full sha>` and `:sha-<short sha>`, so
+  #   --set image.tag=$(git rev-parse HEAD)
+  # makes the running version visible and rollback a one-liner. See
+  # docs/self-hosting.md.
   tag: latest
-  pullPolicy: Always
+  # Optional immutable reference; when set it wins over `tag`.
+  # digest: sha256:...
+  # Empty = automatic: Always for `latest`, IfNotPresent for anything else.
+  pullPolicy: ""
 
 server:
+  # Must stay 1. The server hosts two in-process background loops (the
+  # aisstream.io live AIS watch and the Digitraffic AIS archive poller); a
+  # second replica would open a second stream and double-write every
+  # detection. Horizontal scaling is unsupported until those move out of the
+  # server process.
   replicas: 1
   resources:
     requests:
@@ -27,6 +40,9 @@ collector:
   # internal/cluster: real duplicates score 0.73-0.86 and distinct events that
   # clear the category and country guards top out at 0.64.
   clusterThreshold: "0.70"
+  # Cap on one collector run (RUN_TIMEOUT_MINUTES). The Job's
+  # activeDeadlineSeconds (3900) must stay above this.
+  runTimeoutMinutes: "50"
   resources:
     requests:
       cpu: 50m
@@ -34,8 +50,9 @@ collector:
     limits:
       memory: 256Mi
 
-# Secret injected wholesale into both workloads via envFrom. Create it from
-# your local .env:
+# Secret injected wholesale into both workloads via envFrom. It MUST exist
+# before `helm install` — pods will not start without it. Create it from your
+# local .env:
 #   kubectl -n osint create secret generic baltic-osint-hub --from-env-file=.env
 # Keys: OPENAI_API_KEY (required for classification); optional: FIRMS_MAP_KEY,
 # OPENSKY_CLIENT_ID/OPENSKY_CLIENT_SECRET, AISSTREAM_API_KEY,
@@ -50,12 +67,33 @@ existingSecret: baltic-osint-hub
 # an external database instead.
 postgres:
   enabled: true
+  # Pin this for anything you care about — either an exact patch
+  # (postgres:17.6-alpine) or, better, a digest (postgres:17-alpine@sha256:...),
+  # so a node re-pull cannot silently move you across a minor release. Major
+  # upgrades need pg_upgrade or dump/restore; the chart does not do them.
   image: postgres:17-alpine
   storage: 5Gi
   storageClassName: ""
   user: osint
-  password: osint # local cluster default; override for anything shared
+  # Leave empty to have the chart generate a random password on first install
+  # and keep it across upgrades (the Secret carries helm.sh/resource-policy:
+  # keep and is re-read on upgrade). Set it only if you need a known value.
+  password: ""
   database: osint
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  # Daily pg_dump -Fc to a dedicated PVC, keeping the newest `keep` files.
+  # Restore instructions: docs/self-hosting.md#backups.
+  backup:
+    enabled: false
+    schedule: "30 3 * * *"
+    keep: 14
+    storage: 5Gi
+    storageClassName: ""
 
 service:
   # ClusterIP; the Gateway API route below (or your own tunnel config) points at

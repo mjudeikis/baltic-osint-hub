@@ -4,45 +4,162 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to the same branch/PR supersedes the run in flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
-  packages: write
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "22"
+  IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
-  test:
+  go-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: osint
+          POSTGRES_PASSWORD: osint
+          POSTGRES_DB: osint_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U osint -d osint_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
-      - run: go vet ./... && go test ./...
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - run: npm ci && npm run build
-        working-directory: web
+          go-version: ${{ env.GO_VERSION }}
+      - run: go vet ./...
+      # TEST_DATABASE_URL turns on the SQL suites (they TRUNCATE, hence the
+      # throwaway service database). Live-feed tests stay off: no LIVE_FEEDS.
+      - run: go test -race -count=1 ./...
+        env:
+          TEST_DATABASE_URL: postgres://osint:osint@localhost:5432/osint_test?sslmode=disable
+          PGPASSWORD: osint
 
-  image:
-    if: github.event_name == 'push'
-    needs: test
+  go-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11.4
+      - uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: ${{ env.GO_VERSION }}
+          go-package: ./...
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  helm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint deploy/helm/baltic-osint-hub
+      - run: |
+          helm template osint deploy/helm/baltic-osint-hub --set route.enabled=true --set postgres.backup.enabled=true >/dev/null
+          helm template osint deploy/helm/baltic-osint-hub --set postgres.enabled=false >/dev/null
+
+  image:
+    needs: [go-test, go-lint, web, helm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - id: sha
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Always build the amd64 image locally first and scan it; on a PR this is
+      # the whole job. The layer cache means the push build below reuses it.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: ${{ env.IMAGE }}:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: ${{ env.IMAGE }}:scan
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - if: github.event_name == 'push'
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      # Three tags per push: the moving `latest`, the full sha, and the short
+      # sha used for `--set image.tag=sha-<short>`. See docs/self-hosting.md.
+      - if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          # Layer cache across runs; without it every push re-runs npm ci.
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:sha-${{ steps.sha.outputs.short }}
+
+  chart:
+    if: github.event_name == 'push'
+    needs: [image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+      # Chart.yaml's version is the OCI tag; pushing the same version again
+      # overwrites it, which is fine for main.
+      - run: |
+          helm package deploy/helm/baltic-osint-hub -d dist
+          helm push dist/baltic-osint-hub-*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts

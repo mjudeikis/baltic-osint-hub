@@ -1,9 +1,13 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  CertPLDay,
+  fetchCertPL,
   fetchIncidents,
   fetchLayers,
   fetchMeta,
   fetchPosture,
+  isAbort,
+  LAYER_SOURCES,
   Meta,
   Posture,
   fetchSources,
@@ -23,21 +27,29 @@ import {
   countryName,
   toneDef,
 } from "./taxonomy";
+import { formatDay } from "./dates";
+import { freshness } from "./freshness";
 import ThreatBoard from "./components/ThreatBoard";
 import Feed from "./components/Feed";
 
 // The two heaviest dependencies — Recharts (~400 KB) and MapLibre (~700 KB)
 // — load as separate chunks so the posture card and board render from a
 // small core bundle. On 3G the five-second read must not wait for a map.
+// TODO(perf): the map chunk (MapLibre + h3-js) is ~290 KB gzipped and
+// Recharts ~120 KB; both are far heavier than what they draw. Swapping them
+// is a separate piece of work — for now the map section defaults closed on
+// narrow viewports so phones do not fetch it unasked.
 const Timeline = lazy(() => import("./components/Timeline"));
 const IncidentMap = lazy(() => import("./components/IncidentMap"));
 import SarPanel from "./components/SarPanel";
-import StatusBanner from "./components/StatusBanner";
+import StatusBanner, { METHODOLOGY_DOCS } from "./components/StatusBanner";
 import PostureBanner from "./components/PostureBanner";
 import Section, { revealSection } from "./components/Section";
 import SideNav, { NavItem } from "./components/SideNav";
 import SourcesPanel from "./components/SourcesPanel";
 import Preparedness from "./components/Preparedness";
+import CertPLPanel from "./components/CertPLPanel";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 import {
   DAY_PRESETS,
@@ -58,6 +70,31 @@ const NAV_ITEMS: NavItem[] = [
   { id: "sources", label: "Sources" },
 ];
 
+// Plain words, not endpoint paths: the reader needs to know which part of
+// the page is affected and that it will fix itself, not the status code.
+const FAILED_LABEL: Record<string, string> = {
+  summary: "the country board",
+  timeline: "the trend chart",
+  incidents: "the incident feed",
+  posture: "the posture reading",
+  sources: "the collection status",
+  board: "the board headlines",
+  layers: "the map signal layers",
+  certpl: "the CERT.PL cyber rate",
+  "layer:firms": "the thermal (FIRMS) map layer",
+  "layer:gpsjam": "the GPS jamming map layer",
+  "layer:air": "the air activity map layer",
+  "layer:sea": "the sea activity map layer",
+  "layer:sar": "the satellite radar sites",
+};
+
+const REFRESH_MS = 5 * 60 * 1000;
+
+// Phones get the map collapsed by default: the section is lazy-mounted, so a
+// closed map never downloads its chunk. A reader who opens it once keeps it
+// open (Section persists the choice).
+const NARROW = typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches;
+
 export default function App() {
   // One filter object rather than five parallel states: it is set from four
   // places (the strip, board drill-through, timeline clicks, the URL), and a
@@ -71,6 +108,12 @@ export default function App() {
   // resets to defaults, but the reader's pre-drill view deserves its own way
   // back. Snapshot taken at each drill, offered beside the chips.
   const [preDrill, setPreDrill] = useState<FilterState | null>(null);
+  // The current filters, readable from stable callbacks (the board's
+  // onSelect is memoised so the board itself can be).
+  const filtersRef = useRef(filters);
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
 
   // Data states start as null, not [] — before the first response the page
   // must read as "loading", never as a fabricated quiet week. Rendering an
@@ -84,6 +127,7 @@ export default function App() {
   const [incidents, setIncidents] = useState<Incident[] | null>(null);
   const [sources, setSources] = useState<SourceStatus[]>([]);
   const [layers, setLayers] = useState<Layers | null>(null);
+  const [certpl, setCertpl] = useState<CertPLDay[] | null>(null);
   const [posture, setPosture] = useState<Posture | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [focusedSite, setFocusedSite] = useState<string | null>(null);
@@ -94,28 +138,35 @@ export default function App() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const noteError = (key: string, message: string) =>
     setErrors((e) => (e[key] === message ? e : { ...e, [key]: message }));
-  // Plain words, not endpoint paths: the reader needs to know which part of
-  // the page is affected and that it will fix itself, not the status code.
-  const FAILED_LABEL: Record<string, string> = {
-    summary: "the country board",
-    timeline: "the trend chart",
-    incidents: "the incident feed",
-    posture: "the posture reading",
-    sources: "the collection status",
-    board: "the board headlines",
-    layers: "the map signal layers",
-  };
   const failedParts = Object.entries(errors)
     .filter(([, msg]) => Boolean(msg))
     .map(([key]) => FAILED_LABEL[key] ?? key);
 
   // Periodic refresh so a dashboard left open doesn't drift — and so the
   // status banner's "last sync" can't claim freshness the rest of the page
-  // doesn't have. Matches the API's 5-minute Cache-Control.
+  // doesn't have. Matches the API's 5-minute Cache-Control. A hidden tab
+  // skips its ticks (nobody is reading, and phones throttle timers anyway)
+  // and catches up the moment it is visible again.
   const [refreshKey, setRefreshKey] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setRefreshKey((k) => k + 1), 5 * 60 * 1000);
-    return () => clearInterval(id);
+    let lastRefresh = Date.now();
+    const refresh = () => {
+      lastRefresh = Date.now();
+      setRefreshKey((k) => k + 1);
+    };
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") refresh();
+    }, REFRESH_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && Date.now() - lastRefresh >= REFRESH_MS) {
+        refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   // Re-render on an OS theme flip so canvas-rendered colors (Recharts) pick
@@ -136,84 +187,195 @@ export default function App() {
   }, [filters]);
 
   useEffect(() => {
-    fetchSummary()
-      .then((d) => {
-        setSummary(d);
-        noteError("summary", "");
-      })
-      .catch((e) => noteError("summary", String(e)));
+    const ac = new AbortController();
+    const { signal } = ac;
+    // Aborted requests are superseded, not failed: their rejections and any
+    // late results are dropped so an older response never overwrites a
+    // newer one and never paints an error the page has already moved past.
+    const load = <T,>(key: string, req: Promise<T>, apply: (d: T) => void) =>
+      req
+        .then((d) => {
+          if (signal.aborted) return;
+          apply(d);
+          noteError(key, "");
+        })
+        .catch((e) => {
+          if (signal.aborted || isAbort(e)) return;
+          noteError(key, String(e));
+        });
+
+    load("summary", fetchSummary(signal), setSummary);
     // severity 2+, matching the tile counts: the headlines shown must be the
     // events behind the numbers, and analysis pieces are not counted there.
-    fetchIncidents({ days: 7, tone: "negative", severity: 2, limit: 200 })
-      .then((d) => {
-        setBoardIncidents(d);
-        noteError("board", "");
-      })
-      .catch((e) => noteError("board", String(e)));
-    fetchSources()
-      .then((d) => {
-        setSources(d);
-        noteError("sources", "");
-      })
-      .catch((e) => noteError("sources", String(e)));
-    fetchLayers()
-      .then((d) => {
-        setLayers(d);
-        noteError("layers", "");
-      })
-      .catch((e) => noteError("layers", String(e)));
+    load(
+      "board",
+      fetchIncidents({ days: 7, tone: "negative", severity: 2, limit: 200 }, signal),
+      setBoardIncidents,
+    );
+    load("sources", fetchSources(signal), setSources);
+    load("layers", fetchLayers(signal), (d) => {
+      setLayers(d);
+      // Each failed endpoint is its own banner entry, so "the map signal
+      // layers" never hides which layer is missing.
+      for (const src of LAYER_SOURCES) noteError(`layer:${src}`, d.failed[src] ?? "");
+    });
+    // 90 days: enough prior weeks for a median, kept small.
+    load("certpl", fetchCertPL(90, signal), setCertpl);
+    return () => ac.abort();
   }, [refreshKey]);
 
   // The taxonomy and the posture rules are static per deploy; fetched once.
   useEffect(() => {
-    fetchMeta()
+    const ac = new AbortController();
+    fetchMeta(ac.signal)
       .then(setMeta)
       .catch(() => {});
+    return () => ac.abort();
   }, []);
 
+  // "View in the feed" from the posture banner. The feed may be collapsed
+  // and its filters may exclude the event, so this reveals the section,
+  // widens the filters to the defaults if the id is not in the current
+  // list, and scrolls once the row exists. The pending id is settled against
+  // whichever incident list is current: the one on screen at click time, or
+  // the next one the feed fetch delivers.
+  const pendingIncident = useRef<number | null>(null);
+  const incidentsRef = useRef(incidents);
+  useEffect(() => {
+    incidentsRef.current = incidents;
+  }, [incidents]);
+  const settlePending = useCallback((list: Incident[]) => {
+    const id = pendingIncident.current;
+    if (id === null) return;
+    if (list.some((i) => i.id === id)) {
+      pendingIncident.current = null;
+      requestAnimationFrame(() => {
+        document.getElementById(`incident-${id}`)?.scrollIntoView({ block: "center" });
+        history.replaceState(null, "", `#incident-${id}`);
+      });
+      return;
+    }
+    // Not in this view: widen once. If it is still absent under the default
+    // filters there is nothing more to do (the event may have aged out).
+    const f = filtersRef.current;
+    const atDefaults = (Object.keys(DEFAULT_FILTERS) as (keyof FilterState)[]).every(
+      (k) => f[k] === DEFAULT_FILTERS[k],
+    );
+    if (atDefaults) pendingIncident.current = null;
+    else setFilters({ ...DEFAULT_FILTERS });
+  }, []);
+  const viewIncident = useCallback(
+    (id: number) => {
+      pendingIncident.current = id;
+      revealSection("feed");
+      if (incidentsRef.current) settlePending(incidentsRef.current);
+    },
+    [settlePending],
+  );
+
   // Refetch-in-flight flags: stale rows dim rather than posing as current
-  // while a filter change is loading (see .refetching).
+  // while a filter change is loading (see .refetching). Only user-initiated
+  // changes set them; the 5-minute background refresh is silent, since
+  // dimming live content every few minutes reads as a fault.
   const [timelineBusy, setTimelineBusy] = useState(false);
   const [feedBusy, setFeedBusy] = useState(false);
+  const timelineRefreshSeen = useRef(refreshKey);
+  const feedRefreshSeen = useRef(refreshKey);
 
   useEffect(() => {
-    setTimelineBusy(true);
-    fetchTimeline(days, country || undefined)
+    const ac = new AbortController();
+    const { signal } = ac;
+    const background = timelineRefreshSeen.current !== refreshKey;
+    timelineRefreshSeen.current = refreshKey;
+    if (!background) setTimelineBusy(true);
+    fetchTimeline(days, country || undefined, signal)
       .then((d) => {
+        if (signal.aborted) return;
         setTimeline(d);
         noteError("timeline", "");
       })
-      .catch((e) => noteError("timeline", String(e)))
-      .finally(() => setTimelineBusy(false));
+      .catch((e) => {
+        if (signal.aborted || isAbort(e)) return;
+        noteError("timeline", String(e));
+      })
+      .finally(() => {
+        // A superseded request leaves the flag to the request that replaced it.
+        if (!signal.aborted) setTimelineBusy(false);
+      });
     // Posture follows the country filter so it reads for whatever is on
     // screen. Its failure must never be silent: this is the one element the
     // visitor came for, and a swallowed error left "Reading regional
     // posture…" on screen forever.
-    fetchPosture(country || undefined)
+    fetchPosture(country || undefined, signal)
       .then((d) => {
+        if (signal.aborted) return;
         setPosture(d);
         noteError("posture", "");
       })
-      .catch((e) => noteError("posture", String(e)));
+      .catch((e) => {
+        if (signal.aborted || isAbort(e)) return;
+        noteError("posture", String(e));
+      });
+    return () => ac.abort();
   }, [days, country, refreshKey]);
 
   useEffect(() => {
-    setFeedBusy(true);
-    fetchIncidents({
-      days,
-      day: day || undefined,
-      country: country || undefined,
-      category: category || undefined,
-      tone: tone || undefined,
-      severity: sev || undefined,
-    })
+    const ac = new AbortController();
+    const { signal } = ac;
+    const background = feedRefreshSeen.current !== refreshKey;
+    feedRefreshSeen.current = refreshKey;
+    if (!background) setFeedBusy(true);
+    fetchIncidents(
+      {
+        days,
+        day: day || undefined,
+        country: country || undefined,
+        category: category || undefined,
+        tone: tone || undefined,
+        severity: sev || undefined,
+      },
+      signal,
+    )
       .then((d) => {
+        if (signal.aborted) return;
         setIncidents(d);
         noteError("incidents", "");
+        settlePending(d);
       })
-      .catch((e) => noteError("incidents", String(e)))
-      .finally(() => setFeedBusy(false));
-  }, [days, country, category, tone, day, sev, refreshKey]);
+      .catch((e) => {
+        if (signal.aborted || isAbort(e)) return;
+        noteError("incidents", String(e));
+      })
+      .finally(() => {
+        if (!signal.aborted) setFeedBusy(false);
+      });
+    return () => ac.abort();
+  }, [days, country, category, tone, day, sev, refreshKey, settlePending]);
+
+
+  const fresh = useMemo(() => freshness(sources), [sources]);
+
+  // Stable callbacks so the memoised board and the map do not re-render on
+  // every App state tick.
+  const onBoardSelect = useCallback((cc: string, cat: string) => {
+    // The tile counts adverse items over 7 days, so the feed must match or
+    // the number the reader clicked would not be the number they get. A
+    // stale single-day selection would likewise leave the feed showing fewer
+    // items than the tile. sev: 2 mirrors the tile counts (analysis
+    // excluded), so the number clicked equals the number of rows shown.
+    setPreDrill(filtersRef.current);
+    setFilters((f) => ({
+      ...f,
+      country: cc,
+      category: cat,
+      tone: "negative",
+      days: 7,
+      day: "",
+      sev: 2,
+    }));
+    revealSection("feed");
+  }, []);
+  const onFocusHandled = useCallback(() => setFocusedSite(null), []);
 
   // Active filters, rendered as removable chips above the feed. Filters are
   // set from several places — some silently, like the board drill-through
@@ -232,11 +394,7 @@ export default function App() {
   if (day)
     chips.push({
       // Same date voice as the feed's day headers, not raw ISO.
-      label: new Date(day).toLocaleDateString("en-GB", {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-      }),
+      label: formatDay(day),
       clear: () => patch({ day: "" }),
     });
   // sev has no chip: unlike the other filters it now has a permanent,
@@ -252,9 +410,8 @@ export default function App() {
       <header className="site">
         <h1>Baltic OSINT Hub</h1>
         <p>
-          Open-source tracking of hybrid-threat activity affecting Lithuania,
-          Latvia, Estonia, and Poland — aggregated from public news, national
-          cyber-security teams (CERTs), and research feeds.
+          Is this week unusual? Open-source tracking of hybrid-threat activity
+          against Lithuania, Latvia, Estonia and Poland.
         </p>
       </header>
 
@@ -270,39 +427,28 @@ export default function App() {
         </div>
       )}
 
+      {/* Main precedes the nav in DOM order so the posture reading is the
+          first thing on a phone (and the first thing a screen reader meets);
+          the desktop grid places the nav in the left column by CSS. */}
       <div className="layout">
-        <SideNav items={NAV_ITEMS} />
-
         <main>
-          <PostureBanner
-            posture={posture}
-            scope={country ? countryName(country) : ""}
-            meta={meta}
-          />
+          <ErrorBoundary label="The posture reading">
+            <PostureBanner
+              posture={posture}
+              scope={country ? countryName(country) : ""}
+              meta={meta}
+              onViewIncident={viewIncident}
+            />
+          </ErrorBoundary>
 
           <Section id="board" title="Last 7 days by country">
             <ThreatBoard
               cells={summary}
               incidents={boardIncidents}
-              onSelect={(cc, cat) => {
-                // The tile counts adverse items over 7 days, so the feed must
-                // match or the number the reader clicked would not be the
-                // number they get. A stale single-day selection would likewise
-                // leave the feed showing fewer items than the tile.
-                // sev: 2 mirrors the tile counts (analysis excluded), so the
-                // number clicked equals the number of rows shown.
-                setPreDrill(filters);
-                patch({
-                  country: cc,
-                  category: cat,
-                  tone: "negative",
-                  days: 7,
-                  day: "",
-                  sev: 2,
-                });
-                revealSection("feed");
-              }}
+              onSelect={onBoardSelect}
+              fresh={fresh}
             />
+            <CertPLPanel days={certpl} error={errors.certpl || undefined} />
           </Section>
 
           <div className="filters" role="group" aria-label="Filters">
@@ -381,6 +527,7 @@ export default function App() {
                 <Timeline
                   buckets={timeline}
                   days={days}
+                  fresh={fresh}
                   onSelectDay={(d) => {
                     setPreDrill(filters);
                     patch({ day: d });
@@ -392,7 +539,7 @@ export default function App() {
             )}
           </Section>
 
-          <Section id="map" title="Situation map">
+          <Section id="map" title="Situation map" defaultOpen={!NARROW}>
             <Suspense
               fallback={
                 <p style={{ color: "var(--text-muted)" }} aria-busy="true">
@@ -404,7 +551,7 @@ export default function App() {
                 incidents={incidents ?? []}
                 layers={layers}
                 focusedSite={focusedSite}
-                onFocusHandled={() => setFocusedSite(null)}
+                onFocusHandled={onFocusHandled}
               />
             </Suspense>
           </Section>
@@ -451,7 +598,13 @@ export default function App() {
                 ))}
                 <button
                   className="linklike"
-                  onClick={() => setFilters({ ...DEFAULT_FILTERS })}
+                  onClick={() => {
+                    setFilters({ ...DEFAULT_FILTERS });
+                    // The pre-drill snapshot is a way back from a drill, and
+                    // "clear all" is a fresh start — offering "back to
+                    // previous view" after it would restore a stale filter set.
+                    setPreDrill(null);
+                  }}
                 >
                   clear all
                 </button>
@@ -500,9 +653,32 @@ export default function App() {
             title="Sources &amp; methodology"
             defaultOpen={false}
           >
+            {/* The methodology is part of the product: every reading above
+                is auditable only if these are one click away. */}
+            <p className="methodology-links">
+              Read the methodology:{" "}
+              {METHODOLOGY_DOCS.map((d, i) => (
+                <span key={d.href}>
+                  {i > 0 && " · "}
+                  <a href={d.href} target="_blank" rel="noopener noreferrer">
+                    {d.label}
+                  </a>
+                </span>
+              ))}
+              {" · "}
+              <a
+                href="https://github.com/mjudeikis/baltic-osint-hub"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                source code
+              </a>
+            </p>
             <SourcesPanel sources={sources} />
           </Section>
         </main>
+
+        <SideNav items={NAV_ITEMS} />
       </div>
     </div>
   );

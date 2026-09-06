@@ -10,11 +10,12 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { TimelineBucket } from "../api";
-import { CATEGORIES, categoryLabel, cssColor } from "../taxonomy";
+import { Freshness, staleNote } from "../freshness";
+import { buildTimelineData, rowTotal } from "../timelineData";
+import { categoryLabel, cssColor } from "../taxonomy";
 
-// Stacked daily counts. The 8 chart categories use their fixed slots; folded
-// categories (energy, political) merge into a single muted "Other" series so
-// the stack never exceeds the validated 8-slot palette.
+// Stacked daily counts; the data shaping lives in ../timelineData so it can
+// be tested without a DOM.
 //
 // The chart is also the date control: drag the brush to narrow the window, or
 // click a bar to pull the feed to that single day. Until now it was a picture
@@ -22,80 +23,55 @@ import { CATEGORIES, categoryLabel, cssColor } from "../taxonomy";
 export default function Timeline({
   buckets,
   days,
+  fresh,
   onSelectDay,
 }: {
   buckets: TimelineBucket[];
   // The requested window length, so quiet days can be drawn as quiet days.
   days: number;
+  // Collector freshness: an empty chart over a stalled pipeline is "no
+  // data", and must say so rather than "no incidents".
+  fresh: Freshness;
   onSelectDay?: (day: string) => void;
 }) {
   // Brush indices, or null for "the whole window". Held here rather than
   // lifted, because narrowing the view is a reading gesture, not a filter the
-  // API needs to know about.
-  const [range, setRange] = useState<[number, number] | null>(null);
+  // API needs to know about. The indices are positions in the data for one
+  // window length, so the selection remembers which `days` it was made for
+  // and is dropped the moment the window changes — a 90-day brush applied
+  // to 7 days of data would slice past the end.
+  const [brush, setBrush] = useState<{ days: number; range: [number, number] } | null>(null);
+  const range = brush !== null && brush.days === days ? brush.range : null;
+  const setRange = (r: [number, number] | null) => setBrush(r ? { days, range: r } : null);
   const { data, series, collectionStart } = useMemo(() => {
-    const byDay = new Map<string, Record<string, number | string>>();
-    for (const b of buckets) {
-      const day = b.day.slice(0, 10);
-      const def = CATEGORIES.find((c) => c.key === b.category);
-      const key = def?.folded ? "other" : b.category;
-      const row = byDay.get(day) ?? { day };
-      row[key] = ((row[key] as number) ?? 0) + b.count;
-      byDay.set(day, row);
-    }
-    // Densify: a categorical axis renders only the days present, so a
-    // six-day calm gap would collapse into two adjacent bars and the chart
-    // would manufacture escalation. Quiet days are the answer to "is this
-    // week unusual?" and must occupy their real width. The window starts at
-    // the first day with data (a fresh database has no meaningful zeros
-    // before collection began) and runs to today with every day present.
-    // When the collector is younger than the window, the chart starts at
-    // first data — but must say so, or a short history inside a long window
-    // reads as a left-to-right escalation ramp.
-    let collectionStart: string | null = null;
-    if (byDay.size > 0) {
-      const first = [...byDay.keys()].sort()[0];
-      const start = new Date(`${first}T00:00:00Z`);
-      const windowStart = new Date();
-      windowStart.setUTCDate(windowStart.getUTCDate() - (days - 1));
-      const from = start > windowStart ? start : windowStart;
-      if (start > windowStart) collectionStart = first;
-      for (const d = new Date(from); d <= new Date(); d.setUTCDate(d.getUTCDate() + 1)) {
-        const key = d.toISOString().slice(0, 10);
-        if (!byDay.has(key)) byDay.set(key, { day: key });
-      }
-    }
-    const data = [...byDay.values()].sort((a, b) =>
-      String(a.day).localeCompare(String(b.day)),
-    );
-    const present = new Set(buckets.map((b) => b.category));
-    const series = CATEGORIES.filter((c) => !c.folded && present.has(c.key)).map(
-      (c) => ({ key: c.key, label: c.label, color: cssColor(c.cssVar) }),
-    );
-    if (CATEGORIES.some((c) => c.folded && present.has(c.key))) {
-      series.push({ key: "other", label: "Other", color: cssColor("--series-other") });
-    }
-    // Recharts stacks break on missing keys — make every row dense.
-    for (const row of data) {
-      for (const s of series) {
-        if (row[s.key] === undefined) row[s.key] = 0;
-      }
-    }
-    return { data, series, collectionStart };
-  }, [buckets]);
+    // `new Date()` is read here deliberately: the chart runs to today, and
+    // recomputing on each buckets/days change is the right cadence for it.
+    const built = buildTimelineData(buckets, days);
+    return {
+      ...built,
+      series: built.series.map((s) => ({ ...s, color: cssColor(s.cssVar) })),
+    };
+  }, [buckets, days]);
 
   if (data.length === 0) {
-    return <p style={{ color: "var(--text-muted)" }}>No incidents in this window yet.</p>;
+    return (
+      <p style={{ color: "var(--text-muted)" }} role={fresh.stale ? "status" : undefined}>
+        {fresh.stale
+          ? staleNote(fresh)
+          : "No incidents in this window yet."}
+      </p>
+    );
   }
 
-  const [from, to] = range ?? [0, data.length - 1];
+  // A range that no longer fits the data (a refresh that dropped a day, or a
+  // stale brush) falls back to the whole window rather than slicing empty.
+  const valid = range !== null && range[0] >= 0 && range[1] < data.length && range[0] <= range[1];
+  const [from, to] = valid ? range : [0, data.length - 1];
   const shown = data.slice(from, to + 1);
-  const total = shown.reduce(
-    (sum, row) =>
-      sum + series.reduce((n, s) => n + ((row[s.key] as number) ?? 0), 0),
-    0,
-  );
-  const narrowed = range !== null && shown.length < data.length;
+  const first = shown[0];
+  const last = shown[shown.length - 1];
+  const total = shown.reduce((sum, row) => sum + rowTotal(row, series), 0);
+  const narrowed = valid && shown.length < data.length && first !== undefined && last !== undefined;
 
   return (
     <>
@@ -163,7 +139,7 @@ export default function Timeline({
       </ResponsiveContainer>
       {narrowed && (
         <p className="brush-note">
-          {shown[0].day as string} to {shown[shown.length - 1].day as string} —{" "}
+          {first?.day} to {last?.day} —{" "}
           <strong>{total}</strong> {total === 1 ? "event" : "events"} in view.{" "}
           <button className="linklike" onClick={() => setRange(null)}>
             reset
@@ -191,10 +167,7 @@ export default function Timeline({
           >
             <option value="">Choose a day…</option>
             {data.map((row) => {
-              const dayTotal = series.reduce(
-                (n, s) => n + ((row[s.key] as number) ?? 0),
-                0,
-              );
+              const dayTotal = rowTotal(row, series);
               return (
                 <option key={String(row.day)} value={String(row.day)}>
                   {String(row.day)} — {dayTotal} {dayTotal === 1 ? "event" : "events"}
@@ -272,7 +245,7 @@ export default function Timeline({
             <tr key={String(row.day)}>
               <th scope="row">{String(row.day)}</th>
               {series.map((s) => (
-                <td key={s.key}>{(row[s.key] as number) ?? 0}</td>
+                <td key={s.key}>{(row[s.key] as number | undefined) ?? 0}</td>
               ))}
             </tr>
           ))}

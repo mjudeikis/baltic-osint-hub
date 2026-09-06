@@ -57,7 +57,9 @@
   /* Sequential blue ramp steps for severity 1–5 (ordinal use: start at 250). */
   --seq-1: #86b6ef;
   --seq-2: #5598e7;
-  --seq-3: #2a78d6;
+  /* Step 3 carries white badge text (severity 3 "Notable"); #2470cc clears
+     4.5:1 where the earlier #2a78d6 sat at 4.4. */
+  --seq-3: #2470cc;
   --seq-4: #1c5cab;
   --seq-5: #104281;
 }
@@ -321,7 +323,16 @@ a {
   align-items: start;
   margin-top: 12px;
 }
+/* The nav follows <main> in the DOM so the posture reading comes first on
+   phones and for screen readers; on desktop it takes the left column. */
+.layout > main {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
 .sidenav {
+  grid-column: 1;
+  grid-row: 1;
   position: sticky;
   top: 12px;
 }
@@ -345,10 +356,14 @@ a {
   color: var(--text-primary);
   background: var(--surface-1);
 }
-.sidenav a[aria-current="true"] {
+.sidenav a[aria-current="location"] {
   color: var(--series-1);
   border-left-color: var(--series-1);
   font-weight: 600;
+}
+.sidenav a:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: -2px;
 }
 @media (max-width: 900px) {
   .layout {
@@ -356,23 +371,47 @@ a {
        child (tile-event headlines) stretches the column past the viewport
        and the whole page scrolls sideways. */
     grid-template-columns: minmax(0, 1fr);
+    gap: 0;
   }
+  .layout > main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  /* A bottom bar: the section list stays reachable while the posture
+     reading keeps the top of the screen. Sticky to the viewport bottom
+     until its own place in the flow (the page end) scrolls into view. */
   .sidenav {
-    position: static;
+    grid-column: 1;
+    grid-row: 2;
+    position: sticky;
+    top: auto;
+    bottom: 0;
+    z-index: 5;
+    margin: 12px -16px 0;
+    padding: 6px 12px;
+    background: var(--surface-1);
+    border-top: 1px solid var(--border);
   }
   .sidenav ul {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 4px;
     border-left: none;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .sidenav ul::-webkit-scrollbar {
+    display: none;
   }
   .sidenav a {
     border: 1px solid var(--baseline);
     border-radius: 99px;
     margin-left: 0;
     padding: 4px 10px;
+    white-space: nowrap;
   }
-  .sidenav a[aria-current="true"] {
+  .sidenav a[aria-current="location"] {
     border-color: var(--series-1);
   }
 }
@@ -410,6 +449,11 @@ a {
 .section-toggle:hover,
 .section-toggle:hover .chevron {
   color: var(--series-1);
+}
+.section-toggle:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 3px;
+  border-radius: 3px;
 }
 .chevron[data-open="true"] {
   transform: rotate(90deg);
@@ -477,6 +521,65 @@ header.site p {
   border-color: var(--series-1);
   color: var(--series-1);
   font-weight: 600;
+}
+/* Keyboard focus is visible on every control, in the same blue that marks
+   the active filter; :focus-visible so pointer clicks stay clean. */
+.filters button:focus-visible,
+.filters select:focus-visible,
+.tile-main:focus-visible,
+.tile-drill:focus-visible,
+.linklike:focus-visible,
+.chip-clear:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+.tile-main:focus-visible .delta {
+  color: var(--series-1);
+  text-decoration: underline;
+}
+
+/* The board's freshness note: an empty week over a stalled collector is
+   "no data", and the caveat sits where the tiles would otherwise read calm. */
+.board-stale {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--status-warning-text);
+}
+
+/* CERT.PL rate, below the country tiles. A single machine signal, one hue. */
+.certpl {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.certpl p {
+  margin: 0 0 6px;
+}
+.certpl strong {
+  color: var(--text-primary);
+}
+.certpl-strip {
+  display: block;
+  max-width: 100%;
+}
+
+.methodology-links {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+}
+
+/* A layer whose feed failed is marked in the legend, next to its name. */
+.map-legend-down {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--status-warning-text);
+  border: 1px solid var(--status-warning);
+  border-radius: 99px;
+  padding: 0 6px;
 }
 
 /* Threat board */
@@ -853,7 +956,8 @@ div > section:first-child > .feed-day {
   border: 1px solid var(--status-warning);
   border-radius: 99px;
   padding: 0 7px;
-  white-space: nowrap;
+  /* Wraps: the text is long, and nowrap pushed it past narrow rows. */
+  line-height: 1.5;
 }
 .feed-item[data-state-media] {
   border-left: 3px solid var(--status-warning);

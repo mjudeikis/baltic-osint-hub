@@ -106,6 +106,32 @@ Observed in practice: a region-wide backscatter shift moved *every* monitored
 site positively in one window, including a water-dominated box at Baltiysk.
 Without guard 2 that would have flagged Pskov at 27.9σ. It is suppressed.
 
+## How the collector runs it
+
+The Copernicus **Statistical API** does the raster work server-side: an
+evalscript converts VV backscatter to dB and marks pixels above −5 dB, and
+the service returns the bright-pixel fraction per 6-day interval. Nothing
+decodes imagery locally, which is what lets this run inside an hourly
+collector on a 256Mi pod.
+
+Only **descending** passes are used, so incidence angle stays comparable —
+mixing orbit directions is the classic way to manufacture anomalies (see the
+relative-orbit defect below for the part that is still open). The baseline is
+a **median + MAD** over 180 days rather than mean/stdev, so occasional wild
+passes do not mask real change; a site is flagged when the newest pass is
+≥3σ *and* ≥1 percentage point above its own baseline, with at least 8 prior
+observations, and only rises are flagged. The three guards above are applied
+on top of that.
+
+The first run backfills 180 days, so baselines are usable immediately rather
+than after weeks of accumulation. Observed medians line up with what the
+sites are: Brest rail yard ~10% bright pixels (rolling stock), Baranavichy
+air base ~7%, rural border crossings ~0.9% (fields and forest).
+
+This finds *"something changed here, go look"* — it is not object detection.
+Weather, farm machinery and construction move the same number, so every AOI
+card deep-links to the Copernicus Browser for human verification.
+
 ## Known outstanding limitation
 
 C-band backscatter over **wet snow** drops sharply, and freeze–thaw cycles

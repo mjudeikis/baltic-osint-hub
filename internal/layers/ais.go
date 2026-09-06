@@ -39,6 +39,12 @@ type AISWatch struct {
 	// database per position report. Missing entries are re-checked, because a
 	// vessel we have not yet classified must never be silently filtered.
 	shipTypes map[int64]int
+	// streamSince is when the current websocket session began. A vessel
+	// whose last fix predates it was not silent — we were. See handlePosition.
+	streamSince time.Time
+	// sink receives detections; nil means record to the database. Tests set
+	// it to observe handlePosition without a store.
+	sink func(ctx context.Context, msg *aisMessage, corridor, event string, started time.Time)
 }
 
 type vesselState struct {
@@ -117,6 +123,7 @@ func (w *AISWatch) consume(ctx context.Context) error {
 		return err
 	}
 	w.Log.Info("aisstream connected", "corridors", len(boxes))
+	w.streamSince = time.Now()
 
 	// Close the socket when ctx ends so ReadMessage unblocks.
 	go func() {
@@ -157,6 +164,14 @@ func (w *AISWatch) handlePosition(ctx context.Context, msg *aisMessage) {
 	if st == nil {
 		st = &vesselState{}
 		w.vessels[msg.MetaData.MMSI] = st
+	} else if st.lastSeen.Before(w.streamSince) {
+		// The vessel's last fix came through a previous websocket session.
+		// The silence since then is ours, not the ship's: after every
+		// reconnect the gap detector otherwise flagged every vessel in every
+		// corridor at once, with the outage as their "dark" period. Nor can a
+		// loiter that began before the outage be trusted to have continued
+		// through it, so that clock restarts too.
+		st.slowSince = nil
 	} else if st.corridor != "" && now.Sub(st.lastSeen) > gapAfter {
 		// Reappeared inside a corridor after going dark inside one.
 		w.record(ctx, msg, corridor, "ais-gap", st.lastSeen)
@@ -191,6 +206,10 @@ func (w *AISWatch) handlePosition(ctx context.Context, msg *aisMessage) {
 }
 
 func (w *AISWatch) record(ctx context.Context, msg *aisMessage, corridor, event string, started time.Time) {
+	if w.sink != nil {
+		w.sink(ctx, msg, corridor, event, started)
+		return
+	}
 	pos := msg.Message.PositionReport
 	sog := float32(pos.Sog)
 	added, err := w.DB.InsertSeaEvent(ctx, &store.SeaEvent{

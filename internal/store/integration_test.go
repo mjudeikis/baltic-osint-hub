@@ -655,20 +655,231 @@ func TestToneCountsReportsCorroboration(t *testing.T) {
 	}
 }
 
-// An incident that has not been clustered yet is treated as corroborated, so
-// the reading does not dip during the minutes between classification and
-// clustering. Not-yet-assessed is not a finding of "uncorroborated".
-func TestToneCountsUnclusteredCountsAsCorroborated(t *testing.T) {
+// An incident that has not been clustered yet is presumed corroborated while
+// it is fresh, so the reading does not dip during the minutes between
+// classification and clustering — but only while it is fresh. Clustering can
+// fail for a whole run, and a single report that then sat unclustered for
+// hours used to count as corroborated indefinitely.
+func TestUnclusteredCorroborationLapsesWhenStale(t *testing.T) {
 	s, ctx := testStore(t)
 	StateControlledSources = []string{}
-	seed(t, s, ctx, "lrt-en", "fresh item", "negative", 4, []string{"LT"}, time.Now().Add(-time.Hour))
+	fresh := seed(t, s, ctx, "lrt-en", "fresh item", "negative", 4, []string{"LT"}, time.Now().Add(-time.Hour))
 
 	_, sev, corroborated, err := s.ToneCounts(ctx, 7, "")
 	if err != nil {
 		t.Fatalf("ToneCounts: %v", err)
 	}
 	if sev[4] != 1 || corroborated[4] != 1 {
-		t.Errorf("unclustered: adverse=%d corroborated=%d, want 1 and 1", sev[4], corroborated[4])
+		t.Errorf("fresh unclustered: adverse=%d corroborated=%d, want 1 and 1", sev[4], corroborated[4])
+	}
+	cells, err := s.Summary(ctx, 1)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if len(cells) != 1 || cells[0].MaxSeverityCorroborated != 4 {
+		t.Errorf("fresh unclustered summary = %+v, want MaxSeverityCorroborated 4", cells)
+	}
+
+	// Age the classification past the grace window; occurred_at is untouched
+	// so the item is still inside every counting window.
+	if _, err := s.pool.Exec(ctx,
+		`UPDATE incidents SET classified_at = now() - interval '3 hours' WHERE id=$1`, fresh); err != nil {
+		t.Fatalf("age incident: %v", err)
+	}
+	_, sev, corroborated, err = s.ToneCounts(ctx, 7, "")
+	if err != nil {
+		t.Fatalf("ToneCounts: %v", err)
+	}
+	if sev[4] != 1 {
+		t.Errorf("stale unclustered: adverse=%d, want 1 — the event itself still counts", sev[4])
+	}
+	if corroborated[4] != 0 {
+		t.Errorf("stale unclustered: corroborated=%d, want 0 — a lone report is not corroboration", corroborated[4])
+	}
+	cells, err = s.Summary(ctx, 1)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if len(cells) != 1 || cells[0].MaxSeverity != 4 || cells[0].MaxSeverityCorroborated != 0 {
+		t.Errorf("stale unclustered summary = %+v, want MaxSeverity 4 and MaxSeverityCorroborated 0", cells)
+	}
+}
+
+// The exclusion of state-controlled outlets must hold in every published
+// count, not only the banner. Summary and Timeline once carried their own
+// copies of the grouping query without it, so a TASS-only claim was absent
+// from the posture reading but present on the board directly below it.
+func TestSummaryAndTimelineExcludeStateMediaOnly(t *testing.T) {
+	s, ctx := testStore(t)
+	StateControlledSources = []string{"tass-en", "ria"}
+	now := time.Now().Add(-2 * time.Hour)
+
+	// Unclustered state-only report, and a clustered state-only event.
+	seed(t, s, ctx, "tass-en", "unclustered claim", "negative", 4, []string{"EE"}, now)
+	stateOnly := seed(t, s, ctx, "ria", "clustered claim", "negative", 4, []string{"EE"}, now)
+	ev, err := s.CreateEventFor(ctx, stateOnly)
+	if err != nil {
+		t.Fatalf("CreateEventFor: %v", err)
+	}
+	if err := s.RefreshEvent(ctx, ev); err != nil {
+		t.Fatalf("RefreshEvent: %v", err)
+	}
+	// One genuine event, also carried by a state wire.
+	real := seed(t, s, ctx, "err-news", "real incident", "negative", 3, []string{"EE"}, now)
+	realState := seed(t, s, ctx, "tass-en", "real incident", "negative", 5, []string{"EE"}, now)
+	ev2, err := s.CreateEventFor(ctx, real)
+	if err != nil {
+		t.Fatalf("CreateEventFor: %v", err)
+	}
+	if err := s.AttachIncident(ctx, realState, ev2); err != nil {
+		t.Fatalf("AttachIncident: %v", err)
+	}
+	if err := s.RefreshEvent(ctx, ev2); err != nil {
+		t.Fatalf("RefreshEvent: %v", err)
+	}
+
+	cells, err := s.Summary(ctx, 1)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if len(cells) != 1 {
+		t.Fatalf("summary cells = %+v, want exactly the one EE/sabotage cell", cells)
+	}
+	if cells[0].RecentAdverse != 1 || cells[0].MaxSeverity != 3 {
+		t.Errorf("summary = %+v, want 1 adverse at severity 3 (state claims excluded, state severity ignored)", cells[0])
+	}
+
+	buckets, err := s.Timeline(ctx, time.Now().AddDate(0, 0, -7), "", 1)
+	if err != nil {
+		t.Fatalf("Timeline: %v", err)
+	}
+	n := 0
+	for _, b := range buckets {
+		n += b.Count
+	}
+	if n != 1 {
+		t.Errorf("timeline count = %d, want 1 — state-only units must not appear", n)
+	}
+
+	// The feed still lists everything by default; with ExcludeStateOnly the
+	// state-only units drop but the mixed event keeps its full source list.
+	all, err := s.ListIncidents(ctx, IncidentFilter{Since: time.Now().AddDate(0, 0, -7)})
+	if err != nil {
+		t.Fatalf("ListIncidents: %v", err)
+	}
+	if len(all) != 3 {
+		t.Errorf("unfiltered feed = %d rows, want 3", len(all))
+	}
+	indep, err := s.ListIncidents(ctx, IncidentFilter{Since: time.Now().AddDate(0, 0, -7), ExcludeStateOnly: true})
+	if err != nil {
+		t.Fatalf("ListIncidents: %v", err)
+	}
+	if len(indep) != 1 {
+		t.Fatalf("ExcludeStateOnly feed = %d rows, want 1", len(indep))
+	}
+	if indep[0].Source != "err-news" || indep[0].Reports != 2 || len(indep[0].Sources) != 2 {
+		t.Errorf("ExcludeStateOnly row = %+v, want the independent representative with both sources listed", indep[0])
+	}
+}
+
+// A batch the model can never answer must stop being retried.
+func TestRecordClassifyAttemptRetires(t *testing.T) {
+	s, ctx := testStore(t)
+	ok, err := s.InsertRawItem(ctx, &RawItem{Source: "lrt-en", URL: "https://example.test/poison", Title: "poison", ContentHash: "h1"})
+	if err != nil || !ok {
+		t.Fatalf("InsertRawItem: ok=%v err=%v", ok, err)
+	}
+	pending, err := s.PendingItems(ctx, 10)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("PendingItems: %v %v", pending, err)
+	}
+	id := pending[0].ID
+	for i := 1; i < MaxClassifyAttempts; i++ {
+		retired, err := s.RecordClassifyAttempt(ctx, []int64{id})
+		if err != nil {
+			t.Fatalf("RecordClassifyAttempt: %v", err)
+		}
+		if len(retired) != 0 {
+			t.Fatalf("attempt %d retired %v, want nothing yet", i, retired)
+		}
+	}
+	retired, err := s.RecordClassifyAttempt(ctx, []int64{id})
+	if err != nil {
+		t.Fatalf("RecordClassifyAttempt: %v", err)
+	}
+	if len(retired) != 1 || retired[0] != id {
+		t.Errorf("retired = %v, want [%d]", retired, id)
+	}
+	pending, err = s.PendingItems(ctx, 10)
+	if err != nil {
+		t.Fatalf("PendingItems: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Errorf("pending after retirement = %d, want 0", len(pending))
+	}
+}
+
+// Retries queue behind fresh items rather than ahead of them.
+func TestPendingItemsOrdersRetriesLast(t *testing.T) {
+	s, ctx := testStore(t)
+	for i, u := range []string{"a", "b"} {
+		if _, err := s.InsertRawItem(ctx, &RawItem{Source: "lrt-en", URL: "https://example.test/" + u, Title: u, ContentHash: u}); err != nil {
+			t.Fatalf("insert %d: %v", i, err)
+		}
+	}
+	pending, _ := s.PendingItems(ctx, 10)
+	if len(pending) != 2 {
+		t.Fatalf("pending = %d, want 2", len(pending))
+	}
+	if _, err := s.RecordClassifyAttempt(ctx, []int64{pending[0].ID}); err != nil {
+		t.Fatalf("RecordClassifyAttempt: %v", err)
+	}
+	pending, _ = s.PendingItems(ctx, 10)
+	if pending[0].Attempts != 0 || pending[1].Attempts != 1 {
+		t.Errorf("order = attempts %d then %d, want the untried item first", pending[0].Attempts, pending[1].Attempts)
+	}
+}
+
+// Retention must never take a raw item that evidences an incident.
+func TestPruneKeepsReferencedRawItems(t *testing.T) {
+	s, ctx := testStore(t)
+	// Old rejected item: eligible.
+	if _, err := s.pool.Exec(ctx,
+		`INSERT INTO raw_items (source, url, title, content_hash, status, fetched_at)
+		 VALUES ('lrt-en','https://example.test/old-junk','junk','j','irrelevant', now() - interval '61 days')`); err != nil {
+		t.Fatal(err)
+	}
+	// Old classified item backing an incident: kept.
+	kept := seed(t, s, ctx, "lrt-en", "old event", "negative", 3, []string{"LT"}, time.Now().AddDate(0, 0, -100))
+	if _, err := s.pool.Exec(ctx,
+		`UPDATE raw_items SET fetched_at = now() - interval '100 days', status='error'
+		 WHERE id = (SELECT raw_item_id FROM incidents WHERE id=$1)`, kept); err != nil {
+		t.Fatal(err)
+	}
+	// Recent rejected item: kept.
+	if _, err := s.pool.Exec(ctx,
+		`INSERT INTO raw_items (source, url, title, content_hash, status)
+		 VALUES ('lrt-en','https://example.test/new-junk','junk2','j2','irrelevant')`); err != nil {
+		t.Fatal(err)
+	}
+	s.RecordSourceRun(ctx, "x", time.Now().AddDate(0, 0, -31), 0, 0, nil)
+	s.RecordSourceRun(ctx, "x", time.Now(), 0, 0, nil)
+
+	res, err := s.Prune(ctx)
+	if err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if res.RawItems != 1 {
+		t.Errorf("pruned raw_items = %d, want 1", res.RawItems)
+	}
+	if res.SourceRuns != 1 {
+		t.Errorf("pruned source_runs = %d, want 1", res.SourceRuns)
+	}
+	var incidents, items int
+	_ = s.pool.QueryRow(ctx, `SELECT count(*) FROM incidents`).Scan(&incidents)
+	_ = s.pool.QueryRow(ctx, `SELECT count(*) FROM raw_items`).Scan(&items)
+	if incidents != 1 || items != 2 {
+		t.Errorf("after prune: incidents=%d raw_items=%d, want 1 and 2", incidents, items)
 	}
 }
 

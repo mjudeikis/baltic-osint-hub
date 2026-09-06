@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useState } from "react";
+import ErrorBoundary from "./ErrorBoundary";
 
 // Collapsible section. Open/closed state persists per section so a reader's
 // layout survives a reload; storage failures (private windows, blocked site
@@ -52,9 +53,10 @@ export default function Section({
   // tile fetches. Once opened, children stay mounted so state survives
   // re-collapse.
   const [everOpen, setEverOpen] = useState(open);
-  useEffect(() => {
-    if (open) setEverOpen(true);
-  }, [open]);
+  // Latched during render (the documented pattern for state derived from a
+  // previous render) rather than in an effect, which would cost an extra
+  // commit on every open.
+  if (open && !everOpen) setEverOpen(true);
 
   // Open when navigated to: the sidenav's hash links and revealSection both
   // target sections that may be collapsed.
@@ -109,7 +111,9 @@ export default function Section({
         {aside && <div className="section-aside">{aside}</div>}
       </div>
       <div id={`${id}-body`} hidden={!open}>
-        {everOpen ? children : null}
+        {/* Each section is its own failure domain: a render error in one
+            panel must not blank the page (see ErrorBoundary). */}
+        {everOpen ? <ErrorBoundary label={title}>{children}</ErrorBoundary> : null}
       </div>
     </section>
   );

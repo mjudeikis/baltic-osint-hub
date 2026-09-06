@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
@@ -12,5 +12,11 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:8080",
     },
+  },
+  test: {
+    // Pure modules only (URL state, board levels, feed grouping, timeline
+    // shaping); nothing here needs a DOM.
+    environment: "node",
+    include: ["src/**/*.test.ts"],
   },
 });

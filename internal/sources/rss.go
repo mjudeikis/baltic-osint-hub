@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -64,16 +65,28 @@ func (f *RSSFetcher) Fetch(ctx context.Context) ([]store.RawItem, error) {
 			m.Unlock()
 		}()
 	}
-	parser := gofeed.NewParser()
-	parser.Client = HTTPClient
-	feed, err := parser.ParseURLWithContext(f.url, ctx)
+	// Fetched by hand rather than through gofeed's own client so the body
+	// can be size-capped before it is parsed.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch %s: %w", f.url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch %s: status %d", f.url, resp.StatusCode)
+	}
+	feed, err := gofeed.NewParser().Parse(LimitBody(resp.Body))
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", f.url, err)
 	}
 	cutoff := time.Now().Add(-f.maxAge)
 	var items []store.RawItem
 	for _, entry := range feed.Items {
-		if entry.Link == "" || entry.Title == "" {
+		if entry.Title == "" || !ValidLink(entry.Link) {
 			continue
 		}
 		published := entry.PublishedParsed

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -56,9 +57,10 @@ func (c *CertPL) Run(ctx context.Context, db *store.Store, log *slog.Logger) err
 		return fmt.Errorf("cert.pl: status %d", resp.StatusCode)
 	}
 
-	// ~25MB; streamed rather than buffered whole.
+	// ~25MB; streamed rather than buffered whole, and capped well above
+	// that so a runaway response cannot fill memory.
 	var records []certPLRecord
-	if err := json.NewDecoder(resp.Body).Decode(&records); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<20)).Decode(&records); err != nil {
 		return fmt.Errorf("cert.pl: decode: %w", err)
 	}
 	if len(records) == 0 {

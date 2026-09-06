@@ -1,8 +1,14 @@
 bin/
 web/node_modules/
 web/dist/
+web/tsconfig.tsbuildinfo
 *.log
 .env
 .claude/
 # Root tooling deps (impeccable detector parsers)
 /node_modules/
+# impeccable working state: critiques and the hook cache are per-machine
+.impeccable/critique/
+.impeccable/hook.cache.json
+.impeccable/config.local.json
+web/.impeccable/

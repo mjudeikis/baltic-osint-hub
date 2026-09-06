@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mjudeikis/baltic-osint-hub/internal/store"
@@ -27,23 +28,14 @@ type FIRMS struct {
 // and the Leningrad oblast.
 const firmsArea = "19.0,50.5,31.0,60.2" // west,south,east,north
 
+// firmsBase is a var so tests can point the layer at a local server.
+var firmsBase = "https://firms.modaps.eosdis.nasa.gov"
+
+// maxFIRMSBytes caps the CSV: a whole-region day is a few megabytes.
+const maxFIRMSBytes = 32 << 20
+
 func (f *FIRMS) Run(ctx context.Context, db *store.Store, log *slog.Logger) error {
-	url := fmt.Sprintf(
-		"https://firms.modaps.eosdis.nasa.gov/api/area/csv/%s/VIIRS_SNPP_NRT/%s/2",
-		f.MapKey, firmsArea)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := f.Client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("firms: status %d", resp.StatusCode)
-	}
-	detections, err := parseFIRMS(resp.Body)
+	detections, err := f.fetch(ctx)
 	if err != nil {
 		return err
 	}
@@ -61,6 +53,47 @@ func (f *FIRMS) Run(ctx context.Context, db *store.Store, log *slog.Logger) erro
 	}
 	log.Info("firms ingested", "total", len(detections), "in_sectors", added)
 	return nil
+}
+
+// fetch downloads and parses the region CSV.
+//
+// FIRMS puts the MAP_KEY in the URL path, and a *url.Error's message embeds
+// the full URL. That message would otherwise be stored on source_runs and
+// served by GET /api/sources, so every error leaving this function is
+// rewritten with the key removed. The store redacts credential-shaped text
+// as a backstop, but a path segment is not credential-shaped; only this
+// layer knows what the secret looks like.
+func (f *FIRMS) fetch(ctx context.Context) ([]store.FIRMSDetection, error) {
+	url := fmt.Sprintf("%s/api/area/csv/%s/VIIRS_SNPP_NRT/%s/2", firmsBase, f.MapKey, firmsArea)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, f.redact(err)
+	}
+	resp, err := f.Client.Do(req)
+	if err != nil {
+		return nil, f.redact(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("firms: status %d", resp.StatusCode)
+	}
+	detections, err := parseFIRMS(io.LimitReader(resp.Body, maxFIRMSBytes))
+	if err != nil {
+		return nil, f.redact(err)
+	}
+	return detections, nil
+}
+
+// redact rebuilds err as a plain error with the map key removed. It
+// deliberately does not wrap the original: a wrapped error still prints its
+// cause, key included, and Unwrap would hand the unredacted message to any
+// caller that walks the chain.
+func (f *FIRMS) redact(err error) error {
+	msg := err.Error()
+	if f.MapKey != "" {
+		msg = strings.ReplaceAll(msg, f.MapKey, "<redacted>")
+	}
+	return fmt.Errorf("firms: %s", msg)
 }
 
 // parseFIRMS reads the FIRMS area CSV. Header (VIIRS):

@@ -1,4 +1,6 @@
+import { memo } from "react";
 import { Incident } from "../api";
+import { formatDayLong } from "../dates";
 import {
   categoryColor,
   categoryLabel,
@@ -18,7 +20,7 @@ import {
 // order is a form of prominence, and an adversary-aware product does not let
 // Moscow's framing be the first row a worried reader sees — the items are
 // shown, marked, and never lead.
-function groupByDay(incidents: Incident[]): { day: string; items: Incident[] }[] {
+export function groupByDay(incidents: Incident[]): { day: string; items: Incident[] }[] {
   const groups: { day: string; items: Incident[] }[] = [];
   for (const inc of incidents) {
     const day = inc.occurred_at.slice(0, 10);
@@ -34,19 +36,18 @@ function groupByDay(incidents: Incident[]): { day: string; items: Incident[] }[]
   return groups;
 }
 
-const dayLabel = (day: string): string =>
-  new Date(day).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+const dayLabel = formatDayLong;
 
 // The API serves at most this many rows to the feed; at the cap the list is
 // truncated and must say so rather than posing as complete.
 const FEED_CAP = 200;
 
-export default function Feed({ incidents }: { incidents: Incident[] }) {
+// Memoised: the feed is the largest render on the page (up to 200 rows) and
+// its props only change when the incident list does, so the 5-minute
+// background refresh and unrelated state ticks must not re-render it.
+export default memo(Feed);
+
+function Feed({ incidents }: { incidents: Incident[] }) {
   if (incidents.length === 0) {
     return <p style={{ color: "var(--text-muted)" }}>No incidents match the filters.</p>;
   }
