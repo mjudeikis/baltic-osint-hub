@@ -5,7 +5,7 @@
 # and Go cross-compiles via GOARCH. Emulating these stages for arm64 took ~30
 # minutes; cross-compiling takes a few.
 
-FROM --platform=$BUILDPLATFORM node:22-alpine AS web
+FROM --platform=$BUILDPLATFORM node:26-alpine AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
