@@ -10,7 +10,13 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      "/api": "http://localhost:8080",
+      // VITE_API_PROXY=https://osintbaltic.com points the dev server at the
+      // live API, so design work runs against real data without a local
+      // collector. Default is the local Go server.
+      "/api": {
+        target: process.env.VITE_API_PROXY ?? "http://localhost:8080",
+        changeOrigin: true,
+      },
     },
   },
   test: {

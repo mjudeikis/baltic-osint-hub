@@ -61,12 +61,12 @@ import {
 } from "./urlState";
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "board", label: "By country" },
-  { id: "trend", label: "Trend" },
+  { id: "board", label: "By country", primary: true },
+  { id: "trend", label: "Trend", primary: true },
   { id: "map", label: "Situation map" },
   { id: "satellite", label: "Satellite" },
-  { id: "feed", label: "Incident feed" },
-  { id: "prepare", label: "How to prepare" },
+  { id: "feed", label: "Incident feed", primary: true, short: "Feed" },
+  { id: "prepare", label: "How to prepare", primary: true, short: "Prepare" },
   { id: "sources", label: "Sources" },
 ];
 

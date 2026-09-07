@@ -238,8 +238,13 @@ comes from a disciplined size-and-weight ladder and uppercase labels, not from
 family changes. Numbers are the loudest thing on the wall.
 
 ### Hierarchy
-- **Display** (650, 28–30px, 1.15): the posture level word and country-tile
-  counts — the two readings a visitor came for.
+- **Display** (650, 32–40px, 1.1, -0.015em): the posture level word alone —
+  the one reading a visitor came for, and the loudest thing on the wall.
+  Country-tile counts sit a step below at 30px so the regional read is *the*
+  reading, not *a* reading. Directly under the level word, a 14px comparison
+  line ("23 adverse events this week · a typical week has 13", with the trend
+  badge when the week departs from the norm) answers "is this week unusual?"
+  before anything else is read.
 - **Headline** (700, 22px): the site title only.
 - **Title** (700, 15px): card and section headings.
 - **Body** (400, 14px, 1.5): summaries, explanations, preparedness copy.
@@ -264,6 +269,13 @@ strip, then the posture card — the five-second read. Below, a two-column grid
 (172px sticky side navigation + `minmax(0,1fr)` content, 24px gap) walks
 through board, timeline, map, satellite, feed, sources, preparedness as
 collapsible sections.
+
+**The Depth Rule.** Density increases with depth. The posture card (22/24px
+padding) and the country board (18px) are readings and keep the airy page
+rhythm; the analyst sections below them — trend, map, satellite, feed,
+sources — sit tighter (14px padding, 12px gap, 14px titles) so the page reads
+as one headline reading followed by its working material, not a stack of
+equal boxes.
 
 Spacing rhythm is a loose 4px scale: 4/8/12/16/24, with 16px as the default
 card padding and inter-card gap, 12px for in-card grouping, and 10–12px grid
@@ -365,8 +377,26 @@ state (`aria-pressed`, `aria-current`, `data-` attributes, hover, focus).
 - **Desktop:** 172px sticky rail; items are 12.5px Graphite links on a 2px
   Pencil Grid left rule. Current section (`aria-current="true"`): Signal Blue
   text and left rule, weight 600. Hover: Ink on Card Stock.
-- **Mobile (≤900px):** the same links reflow into wrapped pills with Putty
-  borders; the current pill's border goes Signal Blue.
+- **Mobile (≤900px):** a sticky bottom bar on Card Stock with a Hairline
+  top rule, after `<main>` in the DOM so the posture reading comes first on
+  screen and for screen readers. Only the four primary items are shown (By
+  country, Trend, Feed, Prepare — the last two in their short form, with the
+  full label kept for assistive tech); the rest stay reachable by scrolling.
+  Pills carry Putty borders; the current pill's border goes Signal Blue.
+
+### Feed rows
+- Two badges and one sentence. The tone+severity badge and the category chip
+  classify; everything that merely qualifies — countries, source,
+  corroboration — is one 12px Faded Ink text run separated by middots, never
+  a row of pills. Single-source and state-media-only corroboration take the
+  Watch Amber *text* variant at weight 600; corroborated is the unremarkable
+  case and stays muted. A state-media row carries its warning pill once.
+
+### One date voice
+- Day strings are formatted from parts, never via `Intl`: "6 Sep" on axes,
+  chips and captions; "Sun 6 Sep" (year only when it is not the current one)
+  on feed day headers. Instants (timestamps in popups and tables) keep the
+  `en-GB` locale string.
 
 ### Disclosures (signature)
 - Explanatory legends ("here is how this works") are `<details>` blocks styled

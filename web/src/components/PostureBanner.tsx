@@ -44,16 +44,27 @@ export default function PostureBanner({
           <div className="posture-level" style={{ color: textColour }}>
             {posture.level_name}
             <span className="posture-of">{posture.level} of 5</span>
-            {/* A scale that can only ratchet up stops being informative — the
-                US advisory system settled permanently on "guarded" and never
-                once used its two lowest levels. Naming improvement as its own
-                state is what keeps the ladder honest in both directions. */}
+          </div>
+          {/* The answer to "is this week unusual?" sits directly under the
+              level, in one line: the adverse count against the trailing
+              median, and the direction of travel when it departs from the
+              norm. A scale that can only ratchet up stops being informative —
+              the US advisory system settled permanently on "guarded" and never
+              once used its two lowest levels — so improvement is named as its
+              own state. */}
+          <p className="posture-read">
             {trendLabel(posture.trend) && (
               <span className="posture-trend" data-trend={posture.trend}>
                 {trendLabel(posture.trend)}
               </span>
             )}
-          </div>
+            <span>
+              <strong>{negative}</strong> adverse {negative === 1 ? "event" : "events"} this week
+              {posture.typical_week > 0
+                ? ` · a typical week has ${posture.typical_week}`
+                : " · not enough history yet to say what is typical"}
+            </span>
+          </p>
         </div>
 
         {/* Ascending ladder: filled segments up to the current level. */}
@@ -94,18 +105,10 @@ export default function PostureBanner({
           </a>
         </p>
       )}
-      {/* The honesty budget: one word (the level), one basis (the headline
-          names the rule that set it), one caveat line. Everything else lives
-          one click down in "How this level is decided". The line merges the
-          count breakdown with the typicality answer — as data when history
-          exists, as an honest "can't say yet" when it doesn't. */}
-      <p className="posture-explain">
-        {negative} adverse · {positive} favourable · {neutral} neutral this
-        week —{" "}
-        {posture.typical_week > 0
-          ? `a typical week has ${posture.typical_week} adverse.`
-          : "not enough history yet to say whether that is typical."}
-      </p>
+      {/* The honesty budget: one word (the level), one comparison (the read
+          line above), one basis (the headline names the rule that set it).
+          The full tone breakdown is the balance key below; everything else
+          lives one click down in "How this level is decided". */}
 
       {total > 0 && (
         <>

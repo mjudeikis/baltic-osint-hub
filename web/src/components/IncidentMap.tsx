@@ -93,7 +93,15 @@ export default function IncidentMap({
                     "raster-saturation": -0.55,
                     "raster-contrast": -0.05,
                   }
-                : {},
+                : {
+                    // Light mode: OSM's stock greens and blues are the most
+                    // saturated thing on a page whose chrome is warm paper.
+                    // Desaturated and softened, the basemap reads as context
+                    // and the instrument layers above keep the colour.
+                    "raster-saturation": -0.45,
+                    "raster-contrast": -0.1,
+                    "raster-brightness-min": 0.04,
+                  },
             },
           ],
         },

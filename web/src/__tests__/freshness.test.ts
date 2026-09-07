@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { freshness, relative, staleNote } from "../freshness";
-import { formatDay, parseDay } from "../dates";
+import { formatDay, formatDayLong, parseDay } from "../dates";
 import { median, weeklyAdded } from "../components/CertPLPanel";
 
 const src = (last_run: string, error = "") => ({ source: "x", last_run, items_found: 0, items_new: 0, error });
@@ -38,7 +38,9 @@ describe("dates", () => {
   it("treats a day string as a local calendar date", () => {
     const d = parseDay("2026-09-06")!;
     expect([d.getFullYear(), d.getMonth(), d.getDate()]).toEqual([2026, 8, 6]);
-    expect(formatDay("2026-09-06", { day: "numeric", month: "short" })).toBe("6 Sept");
+    expect(formatDay("2026-09-06")).toBe("6 Sep");
+    expect(formatDayLong("2026-09-06", new Date(2026, 0, 1))).toBe("Sun 6 Sep");
+    expect(formatDayLong("2025-12-31", new Date(2026, 0, 1))).toBe("Wed 31 Dec 2025");
     expect(formatDay("not a day")).toBe("not a day");
   });
 });

@@ -110,26 +110,36 @@ function Feed({ incidents }: { incidents: Incident[] }) {
                 >
                   {categoryLabel(inc.category)}
                 </span>
-                <span className="chip">{inc.countries.join(" · ")}</span>
-                <span className="src">{inc.source}</span>
-                {/* Corroboration: how many independent outlets carried this, not
-                    how many articles exist. Absent while unclustered, because an
-                    incident nobody has checked is not the same as one that failed
-                    the check. */}
-                {inc.confidence_label && (
-                  <span
-                    className="corrob"
-                    data-level={inc.confidence_label.replace(/ /g, "-")}
-                    title={
-                      inc.sources?.length
-                        ? `Reported by: ${inc.sources.join(", ")}`
-                        : undefined
-                    }
-                  >
-                    {inc.confidence_label}
-                    {inc.reports > 1 && ` · ${inc.reports} reports`}
-                  </span>
-                )}
+                {/* Everything that qualifies rather than classifies — where,
+                    who reported it, how many independently — is one muted
+                    text run, not a row of pills. A row was carrying up to six
+                    chips; two badges plus a sentence scans in a glance. */}
+                <span className="meta">
+                  <span>{inc.countries.join(", ")}</span>
+                  <span className="src">{inc.source}</span>
+                  {/* Corroboration: how many independent outlets carried
+                      this, not how many articles exist. Absent while
+                      unclustered, because an incident nobody has checked is
+                      not the same as one that failed the check. */}
+                  {/* A state-media row already carries the warning pill;
+                      repeating "state media only" beside it said the same
+                      thing twice on the row that least needs emphasis. */}
+                  {inc.confidence_label &&
+                    !(inc.credibility === "state-controlled" && inc.confidence_label === "state media only") && (
+                    <span
+                      className="corrob"
+                      data-level={inc.confidence_label.replace(/ /g, "-")}
+                      title={
+                        inc.sources?.length
+                          ? `Reported by: ${inc.sources.join(", ")}`
+                          : undefined
+                      }
+                    >
+                      {inc.confidence_label}
+                      {inc.reports > 1 && `, ${inc.reports} reports`}
+                    </span>
+                  )}
+                </span>
                 {inc.credibility === "state-controlled" && (
                   <span
                     className="cred-warn"

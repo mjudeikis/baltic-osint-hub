@@ -3,6 +3,11 @@ import { useEffect, useState } from "react";
 export interface NavItem {
   id: string;
   label: string;
+  // Shown in the phone bottom bar. Seven pills in a scrolling strip hid the
+  // ones a resident actually uses; the rest stay reachable by scrolling.
+  primary?: boolean;
+  // Shorter wording for the phone bar, where four labels share 390px.
+  short?: string;
 }
 
 // Sticky section navigation. The active item follows the scroll position via
@@ -36,12 +41,13 @@ export default function SideNav({ items }: { items: NavItem[] }) {
     <nav className="sidenav" aria-label="Sections">
       <ul>
         {items.map((i) => (
-          <li key={i.id}>
+          <li key={i.id} data-primary={i.primary || undefined}>
             {/* Plain anchors: native hash navigation works even when the
                 browser throttles scripted scrolling (background tabs), and
                 CSS scroll-behavior handles the smoothness. */}
             <a href={`#${i.id}`} aria-current={active === i.id ? "location" : undefined}>
-              {i.label}
+              <span className="nav-long">{i.label}</span>
+              {i.short && <span className="nav-short" aria-hidden="true">{i.short}</span>}
             </a>
           </li>
         ))}

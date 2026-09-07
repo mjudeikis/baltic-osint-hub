@@ -1,3 +1,4 @@
+import { formatDay } from "../dates";
 import { useMemo, useState } from "react";
 import {
   BarChart,
@@ -90,7 +91,8 @@ export default function Timeline({
             tick={{ fill: cssColor("--text-muted"), fontSize: 11 }}
             tickLine={false}
             axisLine={{ stroke: cssColor("--baseline") }}
-            tickFormatter={(d: string) => d.slice(5)}
+            tickFormatter={(d: string) => formatDay(d)}
+            minTickGap={24}
           />
           <YAxis
             allowDecimals={false}
@@ -128,7 +130,7 @@ export default function Timeline({
             travellerWidth={12}
             stroke={cssColor("--baseline")}
             fill={cssColor("--surface-1")}
-            tickFormatter={(d: string) => String(d).slice(5)}
+            tickFormatter={(d: string) => formatDay(String(d))}
             onChange={(r: { startIndex?: number; endIndex?: number }) => {
               if (r?.startIndex === undefined || r?.endIndex === undefined) return;
               const whole = r.startIndex === 0 && r.endIndex === data.length - 1;
