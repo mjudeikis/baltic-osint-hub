@@ -469,6 +469,53 @@ func TestEmbeddingRoundTripAndCandidates(t *testing.T) {
 	}
 }
 
+// The window is measured from the event's first report, not from its latest
+// member. Measured per member, an event chained onward for as long as reports
+// kept coming — a Sunday drone alert absorbed Monday night's shoot-down.
+func TestCandidatesWindowAnchoredToEventStart(t *testing.T) {
+	s, ctx := testStore(t)
+	StateControlledSources = []string{}
+	window := 24 * time.Hour
+	start := time.Now().Add(-40 * time.Hour)
+
+	first := seed(t, s, ctx, "lrt-en", "sunday alert", "negative", 3, []string{"LT"}, start)
+	late := seed(t, s, ctx, "delfi-lt", "sunday follow-up", "negative", 3, []string{"LT"}, start.Add(20*time.Hour))
+	for _, id := range []int64{first, late} {
+		if err := s.SetIncidentEmbedding(ctx, id, []float32{1, 0, 0}); err != nil {
+			t.Fatalf("SetIncidentEmbedding: %v", err)
+		}
+	}
+	eventID, err := s.CreateEventFor(ctx, first)
+	if err != nil {
+		t.Fatalf("CreateEventFor: %v", err)
+	}
+	if err := s.AttachIncident(ctx, late, eventID); err != nil {
+		t.Fatalf("AttachIncident: %v", err)
+	}
+	if err := s.RefreshEvent(ctx, eventID); err != nil {
+		t.Fatalf("RefreshEvent: %v", err)
+	}
+
+	// 35h after the event began, 15h after its latest member: the member is
+	// within the window, the event is not.
+	cands, err := s.Candidates(ctx, "sabotage", start.Add(35*time.Hour), window)
+	if err != nil {
+		t.Fatalf("Candidates: %v", err)
+	}
+	if len(cands) != 0 {
+		t.Errorf("candidates = %d, want 0: the event started outside the window", len(cands))
+	}
+
+	// Inside the window from the start, every member is offered.
+	cands, err = s.Candidates(ctx, "sabotage", start.Add(10*time.Hour), window)
+	if err != nil {
+		t.Fatalf("Candidates: %v", err)
+	}
+	if len(cands) != 2 {
+		t.Errorf("candidates = %d, want both members of the event", len(cands))
+	}
+}
+
 func TestIncidentsNeedingEmbedding(t *testing.T) {
 	s, ctx := testStore(t)
 	now := time.Now().Add(-2 * time.Hour)

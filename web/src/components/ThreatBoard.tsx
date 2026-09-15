@@ -55,15 +55,20 @@ export function level(
 // count without turning the board into a second feed.
 const TOP_EVENTS = 3;
 
-// The worst events behind a tile's count, one headline per clustered event —
+// The latest events behind a tile's count, one headline per clustered event —
 // an event carried by five outlets is one thing that happened, not five.
-function topEvents(incidents: Incident[], cc: string): Incident[] {
+//
+// Newest first, not worst first. Ranked by severity, a week-old severity 4
+// held the top line over last night's incursion, so the tile read as if
+// nothing had happened since. Each line carries its severity badge, and the
+// tile's label is already set by the worst event of the week.
+export function topEvents(incidents: Incident[], cc: string): Incident[] {
   const seen = new Set<number>();
   return incidents
     .filter((i) => i.countries.includes(cc))
     .sort(
       (a, b) =>
-        b.severity - a.severity || b.occurred_at.localeCompare(a.occurred_at),
+        b.occurred_at.localeCompare(a.occurred_at) || b.severity - a.severity,
     )
     .filter((i) => {
       if (i.event_id == null) return true;
@@ -202,11 +207,11 @@ function ThreatBoard({
               ))}
             </ul>
 
-            {/* The events themselves, worst first — so the reader sees what
+            {/* The events themselves, newest first — so the reader sees what
                 the count is made of without leaving the board. Headlines link
                 to the source article; the count above drills to the feed. */}
             {events.length > 0 && (
-              <ul className="tile-events" aria-label={`Top adverse events in ${COUNTRY_NAMES[cc]}`}>
+              <ul className="tile-events" aria-label={`Latest adverse events in ${COUNTRY_NAMES[cc]}`}>
                 {events.map((e) => (
                   <li key={e.id}>
                     <span

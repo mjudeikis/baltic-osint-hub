@@ -73,14 +73,18 @@ func (s *Store) SetIncidentEmbedding(ctx context.Context, id int64, vec []float3
 // falls within the time window. The window and category filter keep this to a
 // handful of rows, which is why the similarity comparison can run in Go
 // without a vector index.
+//
+// The window is tested against the event's start (events.occurred_at, its
+// earliest report), not the member's own time. Filtering on the member let an
+// event chain onward indefinitely — see cluster.Window.
 func (s *Store) Candidates(ctx context.Context, category string, at time.Time, window time.Duration) ([]cluster.Candidate, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT i.event_id, i.embedding, i.countries
 		 FROM incidents i
-		 WHERE i.event_id IS NOT NULL
-		   AND i.embedding IS NOT NULL
+		 JOIN events e ON e.id = i.event_id
+		 WHERE i.embedding IS NOT NULL
 		   AND i.category = $1
-		   AND i.occurred_at BETWEEN $2 AND $3`,
+		   AND e.occurred_at BETWEEN $2 AND $3`,
 		category, at.Add(-window), at.Add(window))
 	if err != nil {
 		return nil, err

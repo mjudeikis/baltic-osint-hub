@@ -59,6 +59,6 @@ spec:
                 - name: CLUSTER_THRESHOLD
                   value: {{ .Values.collector.clusterThreshold | quote }}
                 - name: RUN_TIMEOUT_MINUTES
-                  value: {{ .Values.collector.runTimeoutMinutes | quote }}
+                  value: {{ .Values.collector.runTimeoutMinutes | default 50 | quote }}
               resources:
                 {{- toYaml .Values.collector.resources | nindent 16 }}

@@ -16,12 +16,25 @@ import (
 	"time"
 )
 
-// Window is how far apart two reports of the same event may be. Regional
-// press typically picks up an incident within a day; three days leaves room
-// for weekend reporting and for outlets that publish a considered follow-up,
-// without letting a recurring category of event (a second jamming episode the
-// following week) fold into the first.
-const Window = 72 * time.Hour
+// Window is how far a report may be from its event's FIRST report and still
+// join it. Regional press picks up an incident within a day.
+//
+// It is anchored to the event's start, not to whichever member a new report
+// happens to resemble. It was once 72h measured from each member, which let
+// an event grow for as long as reports kept arriving: each new one only had
+// to be near the latest, so daily "N migrants turned back" bulletins became
+// one 16-day event, and a Sunday drone alert that turned out to be birds
+// absorbed Monday night's real shoot-down 35 hours later — dating it to
+// Sunday and outvoting its tone. Similarity cannot separate those: recurring
+// incidents of one kind read alike (the two drone alerts scored above 0.85),
+// so only time can.
+//
+// Replaying every production incident at 24h anchored: no event spans more
+// than a day, and adverse counts moved only where a chain had been hiding
+// separate nights of activity. The cost is that a follow-up published more
+// than a day later becomes its own event — the safe direction, as with the
+// threshold below.
+const Window = 24 * time.Hour
 
 // DefaultThreshold is the cosine similarity above which two summaries are
 // treated as the same event.

@@ -240,12 +240,18 @@ rotate it. The Secret is annotated `helm.sh/resource-policy: keep`: it
 survives `helm uninstall`, because the PVC does too and the data directory
 only accepts the password it was initialised with.
 
+Every `helm upgrade` here uses `--reset-then-reuse-values` (Helm 3.14+): it
+keeps the overrides you set earlier *and* picks up defaults the new chart
+added. Plain `--reuse-values` renders the new chart with the old release's
+values only, so any key added since your last upgrade is missing — the chart
+tolerates that for its own keys, but you would silently miss new defaults.
+
 **Upgrading an install from chart 0.1.x:** that chart hard-coded the password
 `osint`. The data directory still expects it, so pass it once and the new
 Secret is created with the right value:
 
 ```sh
-helm upgrade osint deploy/helm/baltic-osint-hub -n osint --reuse-values \
+helm upgrade osint deploy/helm/baltic-osint-hub -n osint --reset-then-reuse-values \
   --set postgres.password=osint
 ```
 
@@ -267,7 +273,7 @@ Off by default. Enabling it adds a second PVC and a nightly CronJob running
 `pg_dump -Fc`, keeping the newest `keep` files:
 
 ```sh
-helm upgrade osint deploy/helm/baltic-osint-hub -n osint --reuse-values \
+helm upgrade osint deploy/helm/baltic-osint-hub -n osint --reset-then-reuse-values \
   --set postgres.backup.enabled=true \
   --set postgres.backup.schedule='30 3 * * *' \
   --set postgres.backup.keep=14 \
@@ -325,7 +331,7 @@ CI builds on every push to `main` and pushes three tags to
 `IfNotPresent` automatically (the chart only pulls `Always` for `latest`):
 
 ```sh
-helm upgrade osint deploy/helm/baltic-osint-hub -n osint --reuse-values \
+helm upgrade osint deploy/helm/baltic-osint-hub -n osint --reset-then-reuse-values \
   --set image.tag=$(git rev-parse HEAD)
 
 helm -n osint history osint          # then: helm -n osint rollback osint <rev>

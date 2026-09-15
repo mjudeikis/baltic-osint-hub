@@ -1,4 +1,7 @@
-{{- if and .Values.postgres.enabled .Values.postgres.backup.enabled }}
+{{- /* `default dict`: a release upgraded with --reuse-values carries no
+     postgres.backup block at all, and a nil map cannot be indexed. */ -}}
+{{- $backup := .Values.postgres.backup | default dict }}
+{{- if and .Values.postgres.enabled $backup.enabled }}
 # Logical backups: pg_dump -Fc into a dedicated PVC, pruned to the newest
 # `postgres.backup.keep` files. Restore: docs/self-hosting.md#backups.
 apiVersion: v1
@@ -11,12 +14,12 @@ metadata:
     helm.sh/resource-policy: keep
 spec:
   accessModes: ["ReadWriteOnce"]
-  {{- with .Values.postgres.backup.storageClassName }}
+  {{- with $backup.storageClassName }}
   storageClassName: {{ . }}
   {{- end }}
   resources:
     requests:
-      storage: {{ .Values.postgres.backup.storage }}
+      storage: {{ $backup.storage | default "5Gi" }}
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -25,7 +28,7 @@ metadata:
   labels:
     {{- include "osint.labels" . | nindent 4 }}
 spec:
-  schedule: {{ .Values.postgres.backup.schedule | quote }}
+  schedule: {{ $backup.schedule | default "30 3 * * *" | quote }}
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 600
   successfulJobsHistoryLimit: 3
@@ -70,7 +73,7 @@ spec:
                       name: {{ include "osint.postgresSecret" . }}
                       key: POSTGRES_PASSWORD
                 - name: KEEP
-                  value: {{ .Values.postgres.backup.keep | quote }}
+                  value: {{ $backup.keep | default 14 | quote }}
               command:
                 - /bin/sh
                 - -ec

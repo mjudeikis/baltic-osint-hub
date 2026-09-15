@@ -73,7 +73,11 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 6
           resources:
-            {{- toYaml .Values.postgres.resources | nindent 12 }}
+            {{- /* Absent under --reuse-values from 0.1.x; toYaml of nil would
+                 render a literal null. */ -}}
+            {{- with .Values.postgres.resources }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
   volumeClaimTemplates:
     - metadata:
         name: data
