@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +35,10 @@ type Sentinel struct {
 	tokenExpiry time.Time
 }
 
+// sarRetryBase is the first 429 backoff, doubled on each further attempt. A
+// variable so tests need not wait.
+var sarRetryBase = 5 * time.Second
+
 const (
 	cdseTokenURL   = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 	cdseStatsURL   = "https://sh.dataspace.copernicus.eu/api/v1/statistics"
@@ -52,6 +59,18 @@ const (
 	sarOverlapDays = 18
 	sarInterval    = "P6D" // Sentinel-1 revisit over the region
 	sarResolutionM = 20    // metres; halves processing units vs native 10 m
+
+	// Batching. Each site is its own Statistical API call against a finite
+	// processing-unit and request budget, so a run refreshes only the
+	// sarBatchSize stalest sites, spaced sarRequestGap apart; hourly collector
+	// runs cover the watchlist within a few hours. A site is due again once
+	// sarRefreshInterval has passed — Sentinel-1 revisits in days, so daily
+	// is plenty.
+	sarBatchSize       = 12
+	sarRefreshInterval = 20 * time.Hour
+	sarRequestGap      = 2 * time.Second
+	sarMaxRetries      = 3
+	sarMaxRetryWait    = 30 * time.Second
 
 	// Mean metres per degree of latitude. Longitude degrees shrink with
 	// cos(latitude), so the two axes need different steps.
@@ -166,77 +185,203 @@ func (s *Sentinel) validToken(ctx context.Context) (string, error) {
 	return s.token2(ctx)
 }
 
-// Run refreshes every AOI's time series and re-evaluates its anomaly state.
+// Run refreshes the stalest AOIs' time series and re-evaluates their anomaly
+// state. Each call works through at most sarBatchSize sites, so the watchlist
+// is covered over a few hourly collector runs instead of in one burst that
+// trips the rate limit, and a failing site never causes fresh ones to be
+// bought again.
 func (s *Sentinel) Run(ctx context.Context, db *store.Store, log *slog.Logger) error {
+	fetched, err := db.SARFetchTimes(ctx)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	batch, pending := pickSARBatch(MonitoredAOIs, fetched, now, sarRefreshInterval, sarBatchSize)
+	if len(batch) == 0 {
+		log.Info("sar up to date", "aois", len(MonitoredAOIs))
+		return nil
+	}
 	if _, err := s.validToken(ctx); err != nil {
 		return err
 	}
-	to := time.Now().UTC().Truncate(24 * time.Hour)
+	to := now.UTC().Truncate(24 * time.Hour)
 
 	var failures []string
-	for _, aoi := range MonitoredAOIs {
-		// Only the first run needs the full baseline window. Afterwards ask
-		// for a short trailing window — re-fetching 180 days per AOI per day
-		// would burn the processing-unit budget for data already stored. The
-		// overlap re-covers intervals whose passes may have landed late.
-		from := to.AddDate(0, 0, -sarWindowDays)
-		if latest, ok, err := db.SARLatestInterval(ctx, aoi.Key); err != nil {
-			return err
-		} else if ok {
-			from = latest.AddDate(0, 0, -sarOverlapDays)
+	for i, aoi := range batch {
+		if i > 0 {
+			if err := sleepCtx(ctx, sarRequestGap); err != nil {
+				return err
+			}
 		}
-
-		token, err := s.validToken(ctx)
-		if err != nil {
-			return err
-		}
-		obs, err := s.statistics(ctx, token, aoi, from, to)
-		if err != nil {
+		if err := s.refreshAOI(ctx, db, log, aoi, to); err != nil {
+			if errors.Is(err, errQuotaExhausted) {
+				// Every further request would be refused the same way; stop
+				// instead of spending the request allowance on refusals.
+				return fmt.Errorf("sar aoi %s: %w", aoi.Key, err)
+			}
 			log.Warn("sar aoi failed", "aoi", aoi.Key, "err", err)
 			failures = append(failures, aoi.Key)
 			continue
 		}
-		for i := range obs {
-			if err := db.UpsertSAR(ctx, aoi.Key, &obs[i]); err != nil {
-				return err
-			}
+		if err := db.MarkSARFetched(ctx, aoi.Key); err != nil {
+			return err
 		}
-		// Re-read the stored series so the verdict covers observations from
-		// earlier runs too, not just this response window.
-		series, err := db.SARSeries(ctx, aoi.Key)
+	}
+	log.Info("sar batch done", "refreshed", len(batch)-len(failures),
+		"failed", len(failures), "still_pending", pending-len(batch)+len(failures))
+	if len(failures) > 0 {
+		// Failed sites keep their old fetch time, so they head the next batch.
+		return fmt.Errorf("%d of %d AOIs in batch failed: %s",
+			len(failures), len(batch), strings.Join(failures, ", "))
+	}
+	return nil
+}
+
+// refreshAOI fetches one site's recent statistics, stores them, and records an
+// anomaly (with its before/after images) when the latest interval stands out.
+func (s *Sentinel) refreshAOI(ctx context.Context, db *store.Store, log *slog.Logger, aoi AOI, to time.Time) error {
+	// Only the first run needs the full baseline window. Afterwards ask for a
+	// short trailing window — re-fetching 180 days per AOI per day would burn
+	// the processing-unit budget for data already stored. The overlap
+	// re-covers intervals whose passes may have landed late.
+	from := to.AddDate(0, 0, -sarWindowDays)
+	if latest, ok, err := db.SARLatestInterval(ctx, aoi.Key); err != nil {
+		return err
+	} else if ok {
+		from = latest.AddDate(0, 0, -sarOverlapDays)
+	}
+
+	token, err := s.validToken(ctx)
+	if err != nil {
+		return err
+	}
+	obs, err := s.statistics(ctx, token, aoi, from, to)
+	if err != nil {
+		return err
+	}
+	for i := range obs {
+		if err := db.UpsertSAR(ctx, aoi.Key, &obs[i]); err != nil {
+			return err
+		}
+	}
+	// Re-read the stored series so the verdict covers observations from
+	// earlier runs too, not just this response window.
+	series, err := db.SARSeries(ctx, aoi.Key)
+	if err != nil {
+		return err
+	}
+	a := DetectAnomaly(series)
+	if a.Detected {
+		latest := series[len(series)-1]
+		added, err := db.InsertSARAnomaly(ctx, aoi.Key, latest.Start, a.Latest, a.Median, a.ZScore)
 		if err != nil {
 			return err
 		}
-		a := DetectAnomaly(series)
-		if a.Detected {
-			latest := series[len(series)-1]
-			added, err := db.InsertSARAnomaly(ctx, aoi.Key, latest.Start, a.Latest, a.Median, a.ZScore)
-			if err != nil {
+		if added {
+			log.Info("sar anomaly", "aoi", aoi.Key, "latest", a.Latest,
+				"median", a.Median, "z", a.ZScore)
+		}
+		// A rendering pair lets the reader see the change instead of being
+		// sent off to reconstruct it in the Copernicus Browser. Failure is
+		// logged, not returned: the verdict above is already stored, and the
+		// pair is retried on the site's next refresh. An exhausted quota is
+		// the exception, since the rest of the batch would fail too.
+		if err := s.ensureAnomalyImages(ctx, db, aoi, series); err != nil {
+			if errors.Is(err, errQuotaExhausted) {
 				return err
 			}
-			if added {
-				log.Info("sar anomaly", "aoi", aoi.Key, "latest", a.Latest,
-					"median", a.Median, "z", a.ZScore)
-			}
-			// A rendering pair lets the reader see the change instead of being
-			// sent off to reconstruct it in the Copernicus Browser. Failure is
-			// logged, not returned: the verdict above is already stored, and a
-			// missing picture must not reopen the layer's gate.
-			if err := s.ensureAnomalyImages(ctx, db, aoi, series); err != nil {
-				log.Warn("sar imagery failed", "aoi", aoi.Key, "err", err)
-			}
+			log.Warn("sar imagery failed", "aoi", aoi.Key, "err", err)
 		}
-		log.Info("sar aoi updated", "aoi", aoi.Key, "intervals", len(obs),
-			"series", len(series), "anomaly", a.Detected)
 	}
-	if len(failures) > 0 {
-		// Any failure keeps the layer's gate open so the next run continues
-		// where this one stopped. Sites already stored are re-requested with
-		// only a short trailing window, so successive runs get further.
-		return fmt.Errorf("%d of %d AOIs incomplete: %s",
-			len(failures), len(MonitoredAOIs), strings.Join(failures, ", "))
-	}
+	log.Info("sar aoi updated", "aoi", aoi.Key, "intervals", len(obs),
+		"series", len(series), "anomaly", a.Detected)
 	return nil
+}
+
+// pickSARBatch returns up to n AOIs due for a refresh, never-fetched first and
+// then oldest first, along with how many AOIs are due in total.
+func pickSARBatch(aois []AOI, fetched map[string]time.Time, now time.Time, refresh time.Duration, n int) ([]AOI, int) {
+	var due []AOI
+	for _, a := range aois {
+		if t, ok := fetched[a.Key]; !ok || now.Sub(t) >= refresh {
+			due = append(due, a)
+		}
+	}
+	// Stable, so AOIs with equal times keep watchlist order.
+	sort.SliceStable(due, func(i, j int) bool {
+		return fetched[due[i].Key].Before(fetched[due[j].Key])
+	})
+	if len(due) > n {
+		return due[:n], len(due)
+	}
+	return due, len(due)
+}
+
+// errQuotaExhausted marks a refusal because the account has no processing
+// units or requests left; retrying before the allowance refills is pointless.
+var errQuotaExhausted = errors.New("copernicus quota exhausted")
+
+// postWithRetry sends a request built by newReq, retrying on 429 with
+// backoff (honouring Retry-After). It returns the body of a 200 response;
+// any other status becomes an error prefixed with op.
+func (s *Sentinel) postWithRetry(ctx context.Context, op string, newReq func() (*http.Request, error)) ([]byte, error) {
+	for attempt := 0; ; attempt++ {
+		req, err := newReq()
+		if err != nil {
+			return nil, err
+		}
+		resp, err := s.Client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case resp.StatusCode == http.StatusOK:
+			return data, nil
+		case resp.StatusCode == http.StatusForbidden && isQuotaRefusal(data):
+			return nil, fmt.Errorf("%s: %w: %.200s", op, errQuotaExhausted, data)
+		case resp.StatusCode == http.StatusTooManyRequests && attempt < sarMaxRetries:
+			wait := retryAfter(resp.Header.Get("Retry-After"), sarRetryBase<<attempt)
+			if err := sleepCtx(ctx, wait); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		return nil, fmt.Errorf("%s: status %d: %.200s", op, resp.StatusCode, data)
+	}
+}
+
+func isQuotaRefusal(body []byte) bool {
+	b := string(body)
+	return strings.Contains(b, "ACCESS_INSUFFICIENT") || strings.Contains(b, "Insufficient processing units")
+}
+
+// retryAfter parses a Retry-After header given in seconds, falling back to def
+// and capping the wait so one site cannot stall the whole run.
+func retryAfter(header string, def time.Duration) time.Duration {
+	d := def
+	if secs, err := strconv.Atoi(strings.TrimSpace(header)); err == nil && secs >= 0 {
+		d = time.Duration(secs) * time.Second
+	}
+	return min(d, sarMaxRetryWait)
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 type statsRequest struct {
@@ -309,24 +454,17 @@ func (s *Sentinel) statistics(ctx context.Context, token string, aoi AOI, from, 
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cdseStatsURL, bytes.NewReader(payload))
+	data, err := s.postWithRetry(ctx, "statistics", func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, cdseStatsURL, bytes.NewReader(payload))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		return req, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := s.Client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("statistics: status %d: %.200s", resp.StatusCode, data)
 	}
 	return parseStatistics(data)
 }
@@ -492,25 +630,14 @@ func (s *Sentinel) render(ctx context.Context, token string, aoi AOI, from, to t
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cdseProcessURL, bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "image/png")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := s.Client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("process: status %d: %.200s", resp.StatusCode, data)
-	}
-	return data, nil
+	return s.postWithRetry(ctx, "process", func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, cdseProcessURL, bytes.NewReader(payload))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "image/png")
+		req.Header.Set("Authorization", "Bearer "+token)
+		return req, nil
+	})
 }

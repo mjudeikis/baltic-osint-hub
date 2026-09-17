@@ -1,7 +1,11 @@
 package layers
 
 import (
+	"context"
+	"errors"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -192,5 +196,94 @@ func TestAOIsWellFormed(t *testing.T) {
 		if !strings.Contains(a.BrowserURL(), "browser.dataspace.copernicus.eu") {
 			t.Errorf("%s: bad browser URL %q", a.Key, a.BrowserURL())
 		}
+	}
+}
+
+func TestPickSARBatch(t *testing.T) {
+	now := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+	aois := []AOI{{Key: "a"}, {Key: "b"}, {Key: "c"}, {Key: "d"}, {Key: "e"}}
+	fetched := map[string]time.Time{
+		"a": now.Add(-1 * time.Hour),  // fresh
+		"b": now.Add(-30 * time.Hour), // stale
+		"c": now.Add(-21 * time.Hour), // stale, newer than b
+		// d and e never fetched
+	}
+	batch, due := pickSARBatch(aois, fetched, now, 20*time.Hour, 3)
+	if due != 4 {
+		t.Fatalf("due = %d, want 4", due)
+	}
+	var got []string
+	for _, a := range batch {
+		got = append(got, a.Key)
+	}
+	if want := "d,e,b"; strings.Join(got, ",") != want {
+		t.Fatalf("batch = %v, want %s", got, want)
+	}
+
+	all := map[string]time.Time{}
+	for _, a := range aois {
+		all[a.Key] = now
+	}
+	if batch, due := pickSARBatch(aois, all, now, 20*time.Hour, 3); len(batch) != 0 || due != 0 {
+		t.Fatalf("fresh watchlist picked %d (due %d)", len(batch), due)
+	}
+}
+
+func TestRetryAfter(t *testing.T) {
+	if got := retryAfter("3", time.Second); got != 3*time.Second {
+		t.Errorf("header seconds: got %v", got)
+	}
+	if got := retryAfter("", 2*time.Second); got != 2*time.Second {
+		t.Errorf("fallback: got %v", got)
+	}
+	if got := retryAfter("3600", time.Second); got != sarMaxRetryWait {
+		t.Errorf("cap: got %v", got)
+	}
+}
+
+func TestPostWithRetry(t *testing.T) {
+	sarRetryBase = time.Millisecond
+	t.Cleanup(func() { sarRetryBase = 5 * time.Second })
+
+	cases := []struct {
+		name      string
+		statuses  []int
+		body      string
+		wantCalls int
+		wantErr   bool
+		wantQuota bool
+	}{
+		{name: "ok after 429s", statuses: []int{429, 429, 200}, body: "{}", wantCalls: 3},
+		{name: "gives up on 429", statuses: []int{429, 429, 429, 429, 429}, wantCalls: sarMaxRetries + 1, wantErr: true},
+		{name: "quota refusal stops", statuses: []int{403},
+			body:      `{"error":{"status":403,"message":"Insufficient processing units or requests available in your account.","code":"ACCESS_INSUFFICIENT_PROCESSING_UNITS"}}`,
+			wantCalls: 1, wantErr: true, wantQuota: true},
+		{name: "plain 403 not quota", statuses: []int{403}, body: "nope", wantCalls: 1, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Retry-After", "0")
+				w.WriteHeader(tc.statuses[min(calls, len(tc.statuses)-1)])
+				calls++
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			s := &Sentinel{Client: srv.Client()}
+			_, err := s.postWithRetry(context.Background(), "test", func() (*http.Request, error) {
+				return http.NewRequest(http.MethodPost, srv.URL, nil)
+			})
+			if calls != tc.wantCalls {
+				t.Errorf("calls = %d, want %d", calls, tc.wantCalls)
+			}
+			if (err != nil) != tc.wantErr {
+				t.Errorf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if errors.Is(err, errQuotaExhausted) != tc.wantQuota {
+				t.Errorf("quota = %v, want %v (err %v)", errors.Is(err, errQuotaExhausted), tc.wantQuota, err)
+			}
+		})
 	}
 }

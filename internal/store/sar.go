@@ -70,6 +70,34 @@ func (s *Store) SARLatestInterval(ctx context.Context, aoi string) (time.Time, b
 	return *t, true, nil
 }
 
+// SARFetchTimes returns when each AOI's series was last refreshed. AOIs never
+// refreshed are absent from the map.
+func (s *Store) SARFetchTimes(ctx context.Context) (map[string]time.Time, error) {
+	rows, err := s.pool.Query(ctx, `SELECT aoi, fetched_at FROM layer_sar_fetch`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]time.Time{}
+	for rows.Next() {
+		var aoi string
+		var t time.Time
+		if err := rows.Scan(&aoi, &t); err != nil {
+			return nil, err
+		}
+		out[aoi] = t
+	}
+	return out, rows.Err()
+}
+
+// MarkSARFetched records that an AOI's series was refreshed just now.
+func (s *Store) MarkSARFetched(ctx context.Context, aoi string) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO layer_sar_fetch (aoi, fetched_at) VALUES ($1, now())
+		 ON CONFLICT (aoi) DO UPDATE SET fetched_at = EXCLUDED.fetched_at`, aoi)
+	return err
+}
+
 // InsertSARAnomaly records a verdict once per AOI+interval. Returns true if
 // this was a new detection.
 func (s *Store) InsertSARAnomaly(ctx context.Context, aoi string, intervalStart time.Time,

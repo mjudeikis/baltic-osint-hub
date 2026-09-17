@@ -29,8 +29,8 @@ func main() {
 		log.Error("config", "err", err)
 		os.Exit(1)
 	}
-	// One run must be able to cover the whole watchlist. Each SAR site is a
-	// separate Copernicus round-trip, so this budget scales with the site count.
+	// One run must be able to cover a full SAR batch. Each SAR site is a
+	// separate Copernicus round-trip, so this budget scales with the batch size.
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.RunTimeout)
 	defer cancel()
 
@@ -252,13 +252,16 @@ func runLayers(ctx context.Context, log *slog.Logger, db *store.Store, cfg *conf
 	})
 
 	// SAR is the expensive layer (one Statistical API call per AOI against a
-	// finite processing-unit budget) and Sentinel-1's revisit is measured in
-	// days, so run it at most daily.
+	// finite processing-unit budget). The layer tracks freshness per site and
+	// refreshes only a small batch of stale sites per call, so it may run on
+	// every collector invocation: once the watchlist is fresh a call makes no
+	// Copernicus requests at all. The gate only stops a CronJob faster than
+	// hourly from multiplying batches.
 	if cfg.CopernicusClientID == "" || cfg.CopernicusClientSecret == "" {
 		log.Warn("COPERNICUS_CLIENT_ID/SECRET not set; skipping SAR change detection")
 		return
 	}
-	gated("layer:sentinel", 20*time.Hour, func() error {
+	gated("layer:sentinel", 50*time.Minute, func() error {
 		return (&layers.Sentinel{
 			ClientID:     cfg.CopernicusClientID,
 			ClientSecret: cfg.CopernicusClientSecret,
