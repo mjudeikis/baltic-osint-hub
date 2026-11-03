@@ -78,7 +78,8 @@ truthfully copy:
   volunteer receiver networks.
 - OpenSanctions maritime data is CC BY-NC; CERT.PL surfaces counts only,
   never domains.
-- Exports: `/api/incidents.csv`, `/api/incidents.geojson`; URL state is
+- Exports: `/api/incidents.csv`, `/api/incidents.geojson`; feeds:
+  `/api/incidents.rss`, `/api/incidents.atom` (clustered events only); URL state is
   shareable (`web/src/urlState.ts`).
 
 ## Brand Commitments

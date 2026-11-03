@@ -46,6 +46,8 @@ spec:
             {{- include "osint.dbEnv" . | nindent 12 }}
             - name: STATIC_DIR
               value: /srv/web
+            - name: PUBLIC_BASE_URL
+              value: {{ .Values.server.publicBaseURL | quote }}
           # /readyz pings the database, so the pod leaves the Service while
           # Postgres is down instead of serving 500s; /healthz only proves
           # the process is up, which is all a liveness probe should test.

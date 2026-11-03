@@ -103,3 +103,17 @@ export function exportURL(kind: "csv" | "geojson", f: FilterState): string {
   p.set("limit", "500");
   return `/api/incidents.${kind}?${p}`;
 }
+
+// feedURL is the subscription counterpart of exportURL. A selected day is
+// dropped, since a feed pinned to one past day never updates, and so is the
+// limit, leaving the server's feed default. Severity is always sent: the
+// server defaults a bare feed to 2, so "any severity" must be said outright.
+export function feedURL(kind: "rss" | "atom", f: FilterState): string {
+  const p = new URLSearchParams();
+  p.set("days", String(f.days));
+  if (f.country) p.set("country", f.country);
+  if (f.category) p.set("category", f.category);
+  if (f.tone) p.set("tone", f.tone);
+  p.set("severity", String(f.sev));
+  return `/api/incidents.${kind}?${p}`;
+}

@@ -103,6 +103,7 @@ with a burst of 30**; over that you get `429`.
 |---|---|
 | `GET /api/incidents` | classified events. Filters: `category`, `country`, `tone`, `severity` (minimum), `since`/`until` (RFC 3339), `days`, `day=YYYY-MM-DD`, `limit`, `offset`. Default window **90 days** when no `since`/`days`/`day` is given; `limit` defaults to 100 and is clamped to 500. |
 | `GET /api/incidents.csv`, `.geojson` | same filters, same rows. GeoJSON only includes located events. |
+| `GET /api/incidents.rss`, `.atom` | same filters, as an RSS 2.0 or Atom feed. Only events already clustered (so items keep a stable ID; up to an hour behind the dashboard); a bare URL defaults to `severity=2` and `limit=50`. `ETag`/`If-None-Match` supported. |
 | `GET /api/stats/summary`, `/api/stats/timeline`, `/api/stats/posture`, `/api/stats/posture/history` | counts, daily buckets, the regional posture reading and its history |
 | `GET /api/history/{YYYY-MM-DD}` | what the dashboard showed on that day |
 | `GET /api/sources` | every source with its last successful run |

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mjudeikis/baltic-osint-hub/internal/enrich"
@@ -22,10 +23,14 @@ import (
 type Server struct {
 	db  *store.Store
 	log *slog.Logger
+	// baseURL is the public origin, without a trailing slash. The RSS and
+	// Atom feeds need absolute links and cannot recover it from the request
+	// behind a proxy.
+	baseURL string
 }
 
-func New(db *store.Store, log *slog.Logger) *Server {
-	return &Server{db: db, log: log}
+func New(db *store.Store, log *slog.Logger, baseURL string) *Server {
+	return &Server{db: db, log: log, baseURL: strings.TrimRight(baseURL, "/")}
 }
 
 // Register mounts API routes on mux.
@@ -33,6 +38,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/incidents", s.handleIncidents)
 	mux.HandleFunc("GET /api/incidents.csv", s.handleIncidentsCSV)
 	mux.HandleFunc("GET /api/incidents.geojson", s.handleIncidentsGeoJSON)
+	mux.HandleFunc("GET /api/incidents.rss", s.handleIncidentsRSS)
+	mux.HandleFunc("GET /api/incidents.atom", s.handleIncidentsAtom)
 	mux.HandleFunc("GET /api/stats/timeline", s.handleTimeline)
 	mux.HandleFunc("GET /api/stats/summary", s.handleSummary)
 	mux.HandleFunc("GET /api/stats/posture", s.handlePosture)
@@ -98,8 +105,8 @@ func (s *Server) writeJSON(w http.ResponseWriter, v any) {
 	}
 }
 
-// filterFrom reads the shared incident query parameters. All three incident
-// endpoints use it so an export always matches the view it was taken from.
+// filterFrom reads the shared incident query parameters. Every incident
+// endpoint uses it so an export always matches the view it was taken from.
 func filterFrom(r *http.Request) store.IncidentFilter {
 	q := r.URL.Query()
 	f := store.IncidentFilter{
@@ -137,7 +144,11 @@ func filterFrom(r *http.Request) store.IncidentFilter {
 }
 
 func (s *Server) listOut(r *http.Request) ([]incidentOut, error) {
-	incidents, err := s.db.ListIncidents(r.Context(), filterFrom(r))
+	return s.list(r.Context(), filterFrom(r))
+}
+
+func (s *Server) list(ctx context.Context, f store.IncidentFilter) ([]incidentOut, error) {
+	incidents, err := s.db.ListIncidents(ctx, f)
 	if err != nil {
 		return nil, err
 	}

@@ -18,6 +18,9 @@ server:
   # detection. Horizontal scaling is unsupported until those move out of the
   # server process.
   replicas: 1
+  # Origin readers reach the site on; the RSS and Atom feeds use it for
+  # absolute links. Set it to your own domain alongside route.hostnames.
+  publicBaseURL: https://osintbaltic.com
   resources:
     requests:
       cpu: 50m

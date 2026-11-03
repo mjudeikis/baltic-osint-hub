@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FILTERS, exportURL, readFilters, toQuery } from "../urlState";
+import { DEFAULT_FILTERS, exportURL, feedURL, readFilters, toQuery } from "../urlState";
 
 describe("readFilters", () => {
   it("returns defaults for an empty query", () => {
@@ -36,5 +36,13 @@ describe("exportURL", () => {
     const u = exportURL("csv", { ...DEFAULT_FILTERS, country: "LT" });
     expect(u).toBe("/api/incidents.csv?days=30&country=LT&severity=2&limit=500");
     expect(exportURL("geojson", { ...DEFAULT_FILTERS, sev: 0 })).toBe("/api/incidents.geojson?days=30&limit=500");
+  });
+});
+
+describe("feedURL", () => {
+  it("drops the day and limit, and always states severity", () => {
+    const u = feedURL("rss", { ...DEFAULT_FILTERS, country: "LT", day: "2026-11-01" });
+    expect(u).toBe("/api/incidents.rss?days=30&country=LT&severity=2");
+    expect(feedURL("atom", { ...DEFAULT_FILTERS, sev: 0 })).toBe("/api/incidents.atom?days=30&severity=0");
   });
 });

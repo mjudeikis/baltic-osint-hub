@@ -56,6 +56,7 @@ import {
   DEFAULT_FILTERS,
   FilterState,
   exportURL,
+  feedURL,
   readFilters,
   syncURL,
 } from "./urlState";
@@ -621,8 +622,8 @@ export default function App() {
                 )}
               </p>
             )}
-            {/* Both links carry the filters currently on screen, so what a
-                reader downloads is what they were looking at. */}
+            {/* Every link carries the filters currently on screen, so what a
+                reader downloads or subscribes to is what they were looking at. */}
             <p className="export-links">
               Download these filters (up to 500 items):{" "}
               <a href={exportURL("csv", filters)}>CSV</a>
@@ -631,6 +632,15 @@ export default function App() {
               <span style={{ color: "var(--text-muted)" }}>
                 {" "}
                 — GeoJSON covers located incidents only.
+              </span>
+              <br />
+              Subscribe to these filters:{" "}
+              <a href={feedURL("rss", filters)}>RSS</a>
+              {" · "}
+              <a href={feedURL("atom", filters)}>Atom</a>
+              <span style={{ color: "var(--text-muted)" }}>
+                {" "}
+                — new events appear after the hourly corroboration check.
               </span>
             </p>
             {incidents === null ? (

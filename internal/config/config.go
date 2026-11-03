@@ -33,6 +33,9 @@ type Config struct {
 	CopernicusClientSecret string
 	ListenAddr             string
 	StaticDir              string // directory with built frontend; empty disables static serving
+	// PublicBaseURL is the origin readers reach the site on. The RSS and Atom
+	// feeds need absolute links; self-hosters must set it to their own domain.
+	PublicBaseURL string
 	// EnrichModel is the OpenAI model used for classification.
 	EnrichModel string
 	// MaxEnrichPerRun caps LLM classification per collector run as a cost guard.
@@ -69,6 +72,7 @@ func Load() (*Config, error) {
 		CopernicusClientSecret: os.Getenv("COPERNICUS_CLIENT_SECRET"),
 		ListenAddr:             getenv("LISTEN_ADDR", ":8080"),
 		StaticDir:              os.Getenv("STATIC_DIR"),
+		PublicBaseURL:          getenv("PUBLIC_BASE_URL", "https://osintbaltic.com"),
 		EnrichModel:            getenv("ENRICH_MODEL", "gpt-5-mini"),
 		MaxEnrichPerRun:        getenvInt("MAX_ENRICH_PER_RUN", 300),
 		MaxClusterPerRun:       getenvInt("MAX_CLUSTER_PER_RUN", 1000),

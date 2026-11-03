@@ -274,6 +274,24 @@ func TestListIncidentsDeduplicates(t *testing.T) {
 	if got.Confidence != 0.8 {
 		t.Errorf("Confidence = %v, want 0.8 for two independent sources", got.Confidence)
 	}
+
+	// An incident not yet clustered is listed by default but kept out of the
+	// syndication feeds, which key items on the event.
+	seed(t, s, ctx, "lrt-en", "fresh, unclustered", "negative", 3, []string{"LV"}, now)
+	all, err := s.ListIncidents(ctx, IncidentFilter{Since: time.Now().AddDate(0, 0, -7)})
+	if err != nil {
+		t.Fatalf("ListIncidents: %v", err)
+	}
+	if len(all) != 2 {
+		t.Errorf("unfiltered feed = %d rows, want 2", len(all))
+	}
+	clustered, err := s.ListIncidents(ctx, IncidentFilter{Since: time.Now().AddDate(0, 0, -7), ClusteredOnly: true})
+	if err != nil {
+		t.Fatalf("ListIncidents: %v", err)
+	}
+	if len(clustered) != 1 || clustered[0].EventID == nil || *clustered[0].EventID != eventID {
+		t.Errorf("ClusteredOnly feed = %+v, want only event %d", clustered, eventID)
+	}
 }
 
 func TestSummaryAndTimelineCountEvents(t *testing.T) {

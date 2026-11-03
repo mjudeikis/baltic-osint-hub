@@ -60,7 +60,7 @@ func main() {
 	// per-client token bucket so one caller in a loop cannot monopolise the
 	// database. Static files are cheap and left outside both.
 	apiMux := http.NewServeMux()
-	api.New(db, log).Register(apiMux)
+	api.New(db, log, cfg.PublicBaseURL).Register(apiMux)
 	limiter := api.NewRateLimiter(10, 30)
 	mux := http.NewServeMux()
 	mux.Handle("/api/", limiter.Wrap(api.WithTimeout(15*time.Second, apiMux)))

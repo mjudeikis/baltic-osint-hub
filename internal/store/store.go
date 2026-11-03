@@ -371,6 +371,11 @@ type IncidentFilter struct {
 	// stays complete. The posture banner uses this when naming the event
 	// that set the level — it must never headline a TASS claim.
 	ExcludeStateOnly bool
+	// ClusteredOnly drops incidents the clusterer has not reached yet. The
+	// RSS and Atom feeds use it: a feed item's identity is its event, and an
+	// unclustered incident has none yet, so publishing it would give readers
+	// an item whose GUID changes an hour later and shows up twice.
+	ClusteredOnly bool
 }
 
 // Listing bounds. DefaultListWindow bounds a listing with no time filter, so
@@ -436,6 +441,9 @@ func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident
 		// member rows survive so the sources list is complete.
 		where += ` AND (CASE WHEN i.event_id IS NULL THEN NOT (r.source = ANY($1))
 		                     ELSE e.source_count > 0 END)`
+	}
+	if f.ClusteredOnly {
+		where += " AND i.event_id IS NOT NULL"
 	}
 
 	q := `WITH filtered AS (

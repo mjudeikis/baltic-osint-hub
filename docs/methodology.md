@@ -392,5 +392,15 @@ an export always matches the view it was taken from. GeoJSON contains only
 located incidents — an event that named no place gets no pin rather than a
 placeholder on a capital city.
 
+`/api/incidents.rss` and `/api/incidents.atom` take the same filters too, with
+three differences. They carry only incidents the clusterer has already
+reached, because a feed item is identified by its event: publishing an
+unclustered report would give it an identity that changes at the next run, and
+readers would show it twice. New events therefore reach the feeds up to an hour
+after they reach the dashboard. A bare feed URL defaults to severity 2 and 50
+items, matching the dashboard, because feed readers never add parameters. And
+item text is plain text, never HTML, with state-controlled sources named as
+such.
+
 This project consumes gpsjam, FIRMS, OpenSky, Copernicus, GDELT and aisstream;
 returning nothing would be poor manners.

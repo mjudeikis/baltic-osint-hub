@@ -209,7 +209,8 @@ authoritative.
 the tunnel ingress rule and the proxied `CNAME` to
 `<tunnel-id>.cfargotunnel.com`. `route.hostnames` already defaults to
 `osintbaltic.com`, so the `--set` above is only needed when publishing under
-a different domain. Leave it `false` to expose the app some other way — the
+a different domain — and then also set `server.publicBaseURL` to match, or
+the RSS and Atom feeds will link to osintbaltic.com. Leave it `false` to expose the app some other way — the
 Service is reachable in-cluster at `http://osint-baltic-osint-hub.osint.svc:8080`.
 
 Verify:
